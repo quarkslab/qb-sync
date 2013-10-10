@@ -39,4 +39,6 @@ HRESULT ToBase64(const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszString);
 
 HRESULT FromBase64(LPCSTR pszString, BYTE **ppbBinary);
 
+HRESULT NextChunk(char *cmd, char **nextc);
+
 HRESULT WsaErrMsg(int LastError);

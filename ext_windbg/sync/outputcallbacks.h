@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  Based on out.cpp from WinDDK's dumpstk sample
 */
 
+#define MAX_CMD  8192
 #define CB_OUTPUTCTRL DEBUG_OUTCTL_THIS_CLIENT
 #define CB_FLAGS DEBUG_EXECUTE_ECHO | DEBUG_EXECUTE_NO_REPEAT
 
@@ -48,6 +49,14 @@ public:
         );
 };
 
+
+typedef struct _CMD_BUFFER
+{
+    HRESULT hRes;
+    size_t  len;
+    CHAR    buffer[MAX_CMD];
+} CMD_BUFFER, *PCMD_BUFFER;
+
 extern StdioOutputCallbacks g_OutputCb;
 extern bool g_OutputCbLocal;
-extern CHAR g_CommandBuffer[];
+extern CMD_BUFFER g_CmdBuffer;

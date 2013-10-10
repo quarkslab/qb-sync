@@ -26,10 +26,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "sync.h"
 #include "tunnel.h"
 
-#define MAX_CMD 4096
-
 StdioOutputCallbacks g_OutputCb;
 bool g_OutputCbLocal = false;
+
 
 STDMETHODIMP
 StdioOutputCallbacks::QueryInterface(
@@ -53,17 +52,20 @@ StdioOutputCallbacks::QueryInterface(
     }
 }
 
+
 STDMETHODIMP_(ULONG)
 StdioOutputCallbacks::AddRef(THIS)
 {
     return 1;
 }
 
+
 STDMETHODIMP_(ULONG)
 StdioOutputCallbacks::Release(THIS)
 {
     return 0;
 }
+
 
 STDMETHODIMP
 StdioOutputCallbacks::Output(
@@ -79,14 +81,24 @@ StdioOutputCallbacks::Output(
     LPTSTR pszString;
 
     cbBinary = strlen(Text);
-    
+
     if (g_OutputCbLocal)
     {
-        err = strcpy_s(g_CommandBuffer+4, MAX_CMD-4, Text);
-        if (err) 
-            *((HRESULT *)g_CommandBuffer) = E_FAIL;
-        else
-            *((HRESULT *)g_CommandBuffer) = S_OK;
+
+        if ((g_CmdBuffer.len + cbBinary) < (MAX_CMD-2))
+        {
+            err = strcpy_s(g_CmdBuffer.buffer+g_CmdBuffer.len, MAX_CMD-g_CmdBuffer.len, Text);
+            if (err)
+            {
+                g_CmdBuffer.hRes = E_FAIL;
+                g_CmdBuffer.len = 0;
+            }
+            else
+            {
+                g_CmdBuffer.hRes = S_OK;
+                g_CmdBuffer.len += cbBinary;
+            }
+        }
     }
     else
     {

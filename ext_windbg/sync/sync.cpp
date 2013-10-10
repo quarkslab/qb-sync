@@ -27,7 +27,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define VERBOSE 0
 #define MAX_NAME 1024
-#define MAX_CMD  1024
 #define BUFSIZE 1024
 #define TIMER_PERIOD 100
 #define CONF_FILE "\\.sync"
@@ -35,12 +34,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #pragma comment (lib, "ws2_32.lib")
 #pragma comment (lib, "crypt32.lib")
 
-PDEBUG_CLIENT4          g_ExtClient;
-PDEBUG_CONTROL          g_ExtControl;
-PDEBUG_SYMBOLS          g_ExtSymbols;
-PDEBUG_SYMBOLS2         g_ExtSymbols2;
-PDEBUG_SYMBOLS3         g_ExtSymbols3;
-PDEBUG_REGISTERS        g_ExtRegisters;
+PDEBUG_CLIENT4              g_ExtClient;
+PDEBUG_CONTROL              g_ExtControl;
+PDEBUG_SYMBOLS              g_ExtSymbols;
+PDEBUG_SYMBOLS2             g_ExtSymbols2;
+PDEBUG_SYMBOLS3             g_ExtSymbols3;
+PDEBUG_REGISTERS            g_ExtRegisters;
 WINDBG_EXTENSION_APIS   ExtensionApis;
 
 // Default host value is locahost
@@ -50,10 +49,12 @@ BOOL g_ExtConfFile = false;
 
 // Buffer used to solve symbol's name
 static CHAR g_NameBuffer[MAX_NAME];
-// Buffer used to receive breakpoint command
-CHAR g_CommandBuffer[MAX_CMD];
 
-// Debuggee's state
+// Buffer used to receive breakpoint command
+CMD_BUFFER g_CmdBuffer;
+
+
+// Debuggee's state;
 ULONG64 g_Offset=NULL;
 ULONG64 g_Base = NULL;
 
@@ -271,7 +272,6 @@ IsLocalDebuggee()
     ULONG Class;
     ULONG Qualifier;
 
-
     hRes = g_ExtControl->GetDebuggeeType(&Class, &Qualifier);
     if (FAILED(hRes))
         return hRes;
@@ -413,16 +413,16 @@ EventFilterCb(BOOL *pbIgnoreEvent)
         goto Exit;
 
     // msdn: Returns the command string that is executed when a breakpoint is triggered.
-    hRes = Breakpoint->GetCommand(g_CommandBuffer, MAX_CMD, &CommandSize);
+    hRes = Breakpoint->GetCommand(g_CmdBuffer.buffer, MAX_CMD, &CommandSize);
     if (SUCCEEDED(hRes))
     {
         if (CommandSize > 1)
         {
             // Find last command, delimiter is ';'
-            LastCommand = strrchr(g_CommandBuffer, 0x3b);
+            LastCommand = strrchr(g_CmdBuffer.buffer, 0x3b);
 
             if (LastCommand == NULL)
-                LastCommand = g_CommandBuffer;
+                LastCommand = g_CmdBuffer.buffer;
             else
                 LastCommand++;
 
@@ -440,6 +440,7 @@ Exit:
 }
 
 
+// plugin initialization
 extern "C"
 HRESULT
 CALLBACK
@@ -484,6 +485,7 @@ DebugExtensionInitialize(PULONG Version, PULONG Flags)
 }
 
 
+// notification callback
 extern "C"
 void
 CALLBACK
@@ -687,6 +689,7 @@ syncmod_arg_fail:
 }
 
 
+// execute a command and dump its output
 HRESULT
 CALLBACK
 cmd(PDEBUG_CLIENT4 Client, PCSTR Args)
@@ -737,12 +740,13 @@ exit:
 }
 
 
+// execute a command, output is redirected to a local buffer
 HRESULT
 LocalCmd(PDEBUG_CLIENT4 Client, PCSTR Args)
 {
     HRESULT hRes=S_OK;
-
-    *((HRESULT *)g_CommandBuffer) = E_FAIL;
+    g_CmdBuffer.len = 0;
+    ZeroMemory(g_CmdBuffer.buffer, MAX_CMD);
 
     g_OutputCbLocal = true;
     hRes = cmd(Client, Args);
@@ -752,19 +756,20 @@ LocalCmd(PDEBUG_CLIENT4 Client, PCSTR Args)
 }
 
 
+// execute a list of command ('\n' split)
 HRESULT
 ExecCmdList(PCSTR cmd)
 {
     HRESULT hRes=S_OK;
     ULONG Status;
-    char *ptr, *orig, *end;
+    char *ptr, *end;
 
-    ptr = orig = (char *)cmd;
+    ptr = (char *)cmd;
     end = ptr+strlen(cmd);
 
     while(cmd < end)
     {
-        ptr = (char *) strchr(cmd, 0xA);
+        ptr = (char *) strchr(cmd, 0x0a);
         if( ptr != NULL)
             *ptr = 0;
         else
@@ -1064,6 +1069,53 @@ jmpto(PDEBUG_CLIENT4 Client, PCSTR Args)
 
 HRESULT
 CALLBACK
+raddr(PDEBUG_CLIENT4 Client, PCSTR Args)
+{
+    HRESULT hRes;
+    ULONG64 Base, Offset =0;
+    ULONG NameSize=0;
+    ULONG RemainderIndex;
+    DEBUG_VALUE DebugValue = {};
+    INIT_API();
+
+    if (!Args || !*Args)
+    {
+        dprintf("[sync] !rebaseaddr <expression>\n");
+        return E_FAIL;
+    }
+
+    /*
+    msdn: Evaluate method evaluates an expression, returning the result.
+    */
+    hRes=g_ExtControl->Evaluate(Args, DEBUG_VALUE_INT64, &DebugValue, &RemainderIndex);
+    if(FAILED(hRes))
+    {
+        dprintf("[sync] rebaseaddr: failed to evaluate expression\n");
+        return E_FAIL;
+    }
+
+    Offset = (ULONG64)DebugValue.I64;
+
+    /*
+    msdn: GetModuleByOffset method searches through the target's modules for one
+    whose memory allocation includes the specified location.
+    */
+    hRes=g_ExtSymbols->GetModuleByOffset(Offset, 0, NULL, &Base);
+    if(FAILED(hRes))
+    {
+        dprintf("[sync] rebaseaddr: failed to get module base for address 0x%x\n", Base);
+        return E_FAIL;
+    }
+
+    hRes=TunnelSend("[sync]{\"type\":\"raddr\",\"raddr\":%llu,\"rbase\":%llu,\"base\":%llu,\"offset\":%llu}\n",
+        Offset, Base, g_Base, g_Offset);
+
+    return hRes;
+}
+
+
+HRESULT
+CALLBACK
 jmpraw(PDEBUG_CLIENT4 Client, PCSTR Args)
 {
     HRESULT hRes;
@@ -1251,23 +1303,25 @@ bpcmds(PDEBUG_CLIENT4 Client, PCSTR Args)
         dprintf("[sync] dumping bpcmds to idb\n");
 
         hRes=LocalCmd(Client, ".bpcmds");
-
-        // g_CommandBuffer first four bytes should contains
-        // return value for command exec
-        if (FAILED(hRes) || FAILED(*g_CommandBuffer))
+        if (FAILED(hRes) || FAILED(g_CmdBuffer.hRes))
         {
             dprintf("[sync] failed to evaluate .bpcmds command\n");
             return E_FAIL;
         }
 
-        cbBinary = strlen(g_CommandBuffer+4);
-        dprintf("%s\n", g_CommandBuffer);
+        cbBinary = g_CmdBuffer.len;
 
-        hRes = ToBase64((const byte *)g_CommandBuffer+4, (unsigned int)cbBinary, &pszString);
+        // local output
+        dprintf("%s\n", g_CmdBuffer.buffer);
+
+        hRes = ToBase64((const byte *)g_CmdBuffer.buffer, (unsigned int)cbBinary, &pszString);
         if (SUCCEEDED(hRes)) {
             hRes = TunnelSend("[sync]{\"type\":\"bps_set\",\"msg\":\"%s\"}\n", pszString);
             free(pszString);
         }
+
+        g_CmdBuffer.len = 0;
+        ZeroMemory(g_CmdBuffer.buffer, MAX_CMD);
     }
     else
     {
@@ -1475,30 +1529,32 @@ modcheck(PDEBUG_CLIENT4 Client, PCSTR Args)
         type = "pdb";
         _snprintf_s(cmd, 64, _TRUNCATE , "!itoldyouso  %x", g_Base);
 
-        // g_CommandBuffer first four bytes should contains
         // return value for command exec
         hRes=LocalCmd(Client, cmd);
-        if (FAILED(hRes) || FAILED(*g_CommandBuffer))
+        if (FAILED(hRes) || FAILED(g_CmdBuffer.hRes))
         {
             dprintf("[sync] failed to evaluate !ItoldYouSo  command\n");
             goto Exit;
         }
 
-        cbBinary = (DWORD) strlen(g_CommandBuffer+4);
+        cbBinary = (DWORD) g_CmdBuffer.len;
         if (cbBinary == 0)
         {
             dprintf("     ItoldYouSo return empty result\n");
             goto Exit;
         }
 
-        dprintf("%s\n", g_CommandBuffer+4);
+        dprintf("%s\n", g_CmdBuffer.buffer);
 
-        hRes=ToBase64((const byte *)g_CommandBuffer+4, cbBinary, &pszResString);
+        hRes=ToBase64((const byte *)g_CmdBuffer.buffer, cbBinary, &pszResString);
         if (FAILED(hRes))
         {
             dprintf("[sync] modcheck ToBase64 failed\n");
             goto Exit;
         }
+
+        g_CmdBuffer.len = 0;
+        ZeroMemory(g_CmdBuffer.buffer, MAX_CMD);
     }
     else
     {
@@ -1552,6 +1608,223 @@ Exit:
 
 
 HRESULT
+KsParseLine(char *cmd, ULONG ProcType)
+{
+    HRESULT hRes;
+    int res, i;
+    int nbArgs = (ProcType==IMAGE_FILE_MACHINE_AMD64) ? 4 : 3;
+    char *childebp, *retaddr, *arg, *next, *callsite;
+
+    // match hex address...
+    if (! (((*cmd >= 0x30) && (*cmd <= 0x39)) || ((*cmd >= 0x61) && (*cmd <= 0x66))))
+    {
+        hRes=g_ExtControl->ControlledOutput(
+            DEBUG_OUTCTL_AMBIENT_TEXT,
+            DEBUG_OUTPUT_NORMAL,
+            "%s\n", cmd);
+        goto Exit;
+    }
+
+    childebp = cmd;
+
+    if (FAILED(hRes=NextChunk(childebp, &retaddr)) ||
+        FAILED(hRes=NextChunk(retaddr, &arg)))
+        goto Exit;
+
+    // output Child-SP and RetAddr (respectively with 'dc' and '!jmpto' as DML)
+    hRes=g_ExtControl->ControlledOutput(
+        DEBUG_OUTCTL_AMBIENT_DML,
+        DEBUG_OUTPUT_NORMAL,
+        "<?dml?><exec cmd=\"dc %s\">%s</exec> <exec cmd=\"!jmpto %s\">%s</exec> ",
+         childebp, childebp, retaddr, retaddr);
+
+    if (FAILED(hRes))
+        goto Exit;
+
+    if (ProcType==IMAGE_FILE_MACHINE_AMD64)
+        dprintf(": ");
+
+    // output arguments, 4 when x64, 3 when x86 (with 'dc' as DML)
+    for(i=0; i<nbArgs; i++)
+    {
+        if (FAILED(hRes=NextChunk(arg, &callsite)))
+            goto Exit;
+
+        hRes=g_ExtControl->ControlledOutput(
+            DEBUG_OUTCTL_AMBIENT_DML,
+            DEBUG_OUTPUT_NORMAL,
+            "<exec cmd=\"dc %s\">%s</exec> ",
+            arg, arg);
+
+        if (FAILED(hRes))
+            goto Exit;
+
+        arg = callsite;
+    }
+
+    if (ProcType==IMAGE_FILE_MACHINE_AMD64)
+        dprintf(": ");
+
+    // output Call Site (with '!jmpto' DML as well)
+    hRes=g_ExtControl->ControlledOutput(
+        DEBUG_OUTCTL_AMBIENT_DML,
+        DEBUG_OUTPUT_NORMAL,
+        "<exec cmd=\"!jmpto %s\">%s</exec>\n",
+        callsite, callsite);
+
+Exit:
+    return hRes;
+}
+
+
+HRESULT
+CALLBACK
+ks(PDEBUG_CLIENT4 Client, PCSTR Args)
+{
+    HRESULT hRes=S_OK;
+    BOOL bDisableDML = false;
+    ULONG ProcType;
+    char *cmd, *ptr, *end;
+    UNREFERENCED_PARAMETER(Args);
+
+    hRes=LocalCmd(Client, ".prefer_dml");
+    if (FAILED(hRes) || FAILED(g_CmdBuffer.hRes))
+    {
+        dprintf("[sync] failed to evaluate .prefer_dml command, %x, %x\n", hRes, g_CmdBuffer.hRes);
+        goto Exit;
+    }
+
+    // disable DML temporarily, to get a raw kv output
+    if(strcmp(g_CmdBuffer.buffer, "DML versions of commands on by default\n") == 0)
+    {
+        bDisableDML = true;
+        hRes=LocalCmd(Client, ".prefer_dml 0");
+        if (FAILED(hRes) || FAILED(g_CmdBuffer.hRes))
+        {
+            dprintf("[sync] failed to evaluate .prefer_dml command, %x, %x\n", hRes, g_CmdBuffer.hRes);
+            goto Exit;
+        }
+    }
+
+    /*
+    msdn: returns the effective processor type of the processor of the computer that is running the target.
+    */
+    if (FAILED(hRes=g_ExtControl->GetEffectiveProcessorType(&ProcType)))
+    {
+        dprintf("[sync] failed to get effective processor type\n");
+        goto Exit;
+    }
+
+    hRes=LocalCmd(Client, "kv");
+    if (FAILED(hRes) || FAILED(g_CmdBuffer.hRes) || (g_CmdBuffer.len == 0))
+    {
+        dprintf("[sync] failed to evaluate ks command, %x, %x\n", hRes, g_CmdBuffer.hRes);
+        goto Exit;
+    }
+
+    cmd = (char *)(g_CmdBuffer.buffer);
+    ptr = cmd;
+    end = ptr + strlen(cmd);
+
+    // parse lines
+    while(cmd < end)
+    {
+        ptr = (char *) strchr(cmd, 0x0A);
+        if (ptr == NULL)
+            break;
+
+        *ptr = 0;
+
+        if(FAILED(hRes=KsParseLine(cmd, ProcType)))
+            break;
+
+        cmd = ptr+1;
+    }
+
+Exit:
+    // re-enable DML
+    if(bDisableDML)
+        hRes=LocalCmd(Client, ".prefer_dml 1");
+
+    g_CmdBuffer.len = 0;
+    ZeroMemory(g_CmdBuffer.buffer, MAX_CMD);
+    return hRes;
+}
+
+
+HRESULT
+CALLBACK
+translate(PDEBUG_CLIENT4 Client, PCSTR Args)
+{
+    HRESULT hRes;
+    ULONG64 Base, BaseRemote, Offset =0;
+    ULONG RemainderIndex;
+    DEBUG_VALUE DebugValue = {};
+    INIT_API();
+
+    if (!Args || !*Args)
+    {
+        dprintf("[sync] !translate <base> <address> <module>\n");
+        return E_FAIL;
+    }
+
+    /*
+    msdn: Evaluate method evaluates an expression, returning the result.
+    */
+    hRes=g_ExtControl->Evaluate(Args, DEBUG_VALUE_INT64, &DebugValue, &RemainderIndex);
+    if(FAILED(hRes))
+    {
+        dprintf("[sync] translate: failed to evaluate expression\n");
+        return E_FAIL;
+    }
+
+    BaseRemote = (ULONG64)DebugValue.I64;
+    Args += RemainderIndex;
+
+    /*
+    msdn: Evaluate method evaluates an expression, returning the result.
+    */
+    hRes=g_ExtControl->Evaluate(Args, DEBUG_VALUE_INT64, &DebugValue, &RemainderIndex);
+    if(FAILED(hRes))
+    {
+        dprintf("[sync] translate: failed to evaluate expression\n");
+        return E_FAIL;
+    }
+
+    Offset = (ULONG64)DebugValue.I64;
+    Args += RemainderIndex;
+
+    StrTrim((LPSTR)Args, " ");
+    if (!*Args)
+    {
+        dprintf("[sync] translat: failed to evaluate module name\n");
+        return E_FAIL;
+    }
+
+    hRes=g_ExtSymbols->GetModuleByModuleName(Args, 0, NULL, &Base);
+    if(FAILED(hRes))
+    {
+        dprintf("[sync] translate: failed to find module %s by its name\n", Args);
+        return E_FAIL;
+    }
+
+    Offset = Offset - BaseRemote + Base;
+
+    hRes=g_ExtControl->ControlledOutput(
+        DEBUG_OUTCTL_AMBIENT_DML,
+        DEBUG_OUTPUT_NORMAL,
+        "<?dml?>-> module <exec cmd=\"lmDvm%s\">%s</exec>"\
+        " found at 0x%x, rebased address: 0x%x"\
+        " (<exec cmd=\"bp 0x%x\">bp</exec>,"\
+        " <exec cmd=\"ba e 1 0x%x\">hbp</exec>,"\
+        " <exec cmd=\"dc 0x%x\">dc</exec>)\n",
+        Args, Args, Base, Offset, Offset, Offset);
+
+    return hRes;
+}
+
+
+HRESULT
 CALLBACK
 synchelp(PDEBUG_CLIENT4 Client, PCSTR Args)
 {
@@ -1566,6 +1839,7 @@ synchelp(PDEBUG_CLIENT4 Client, PCSTR Args)
             " > !rcmt [-a address] <string>    = reset comments at current eip (or [addr]) in IDA\n"
             " > !fcmt [-a address] <string>    = add a function comment for 'f = get_func(eip)' (or [addr]) in IDA\n"
             " > !lbl [-a address] <string>     = add a label name at current eip (or [addr]) in IDA\n"
+            " > !raddr <expression>            = add a comment with rebased address evaluated from expression\n"
             " > !cmd <string>                  = execute command <string> and add its output as comment at current eip in IDA\n"
             " > !bc <||on|off|set 0xBBGGRR>    = enable/disable path coloring in IDA\n"
             "                                    color a single instruction at current eip if called without argument\n"
@@ -1581,7 +1855,8 @@ synchelp(PDEBUG_CLIENT4 Client, PCSTR Args)
             " > !modmap <base> <size> <name>   = map a synthetic module over memory range specified by base and size params\n"
             " > !modunmap <base>               = unmap a synthetic module at base address\n"
             " > !bpcmds <||save|load|>         = .bpcmds wrapper, save and reload .bpcmds output to current idb\n"
-            "                                    display saved data if called with no argument\n\n");
+            " > !ks                            = wrapper for kv command using DML\n"
+            " > !translate <base> <addr> <mod> = rebase an address with respect to local module's base\n\n");
 
     return hRes;
 }

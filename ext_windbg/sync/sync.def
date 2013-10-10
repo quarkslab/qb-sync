@@ -31,6 +31,7 @@ EXPORTS
     cmt
     rcmt
     fcmt
+    raddr
     lbl
     bc
     idblist
@@ -40,4 +41,5 @@ EXPORTS
     modunmap
     modcheck
     bpcmds
-
+    ks
+    translate

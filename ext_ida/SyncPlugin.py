@@ -275,6 +275,28 @@ class RequestHandler(object):
         idaapi.set_func_cmt(func, str(msg), False)
         print ("[*] function comment added at 0x%x" % ea)
 
+    # add an address comment request at addr
+    def req_raddr(self, hash):
+        raddr, rbase, offset, base = hash['raddr'], hash['rbase'], hash['offset'], hash['base']
+
+        print "0x%x - 0x%x" % (offset, base)
+        print "0x%x - 0x%x" % (raddr, rbase)
+
+        ea = self.rebase(base, offset)
+        if not ea:
+            return
+
+        if self.base_remote != rbase:
+            print("[*] could not rebase this address, not in module")
+            return
+
+        addr = self.rebase(rbase, raddr)
+        if not addr:
+            return
+
+        self.append_cmt(ea, "0x%x (rebased from 0x%x)" % (addr, raddr))
+        print ("[*] comment added at 0x%x" % ea)
+
     # add label request at addr
     def req_lbl(self, hash):
         msg, offset, base = hash['msg'], hash['offset'], hash['base']
@@ -505,6 +527,14 @@ class RequestHandler(object):
     def hbp_oneshot_notice(self):
         self.hbp_notice(True)
 
+    # send a translate command (Alt-F2) to the debugger (via the broker and dispatcher)
+    def translate_notice(self):
+        ea = idaapi.get_screen_ea()
+        mod = self.name.split('.')[0].strip()
+        cmd = "!translate 0x%x 0x%x %s" % (self.base, ea, mod)
+        self.notice_broker("cmd", "\"cmd\":\"%s\"" % cmd)
+        print "[sync] translate address 0x%x" % ea
+
     # send a go command (F5) to the debugger (via the broker and dispatcher)
     def go_notice(self):
         if not self.is_active:
@@ -561,11 +591,11 @@ class RequestHandler(object):
         self.color = False
         self.prev_loc = None
         self.prev_node = None
-        #print "[sync] path %s" % idautils.GetIdbDir()
-        print "[sync] name %s" % idaapi.get_root_filename()
-        self.base_remote = None
+        self.name = idaapi.get_root_filename()
+        print "[sync] name %s" % self.name
         self.base = idaapi.get_imagebase()
         print "[sync] module base 0x%x" % self.base
+        self.base_remote = None
         self.gm = GraphManager()
         self.parser = parser
         self.broker_sock = None
@@ -577,6 +607,7 @@ class RequestHandler(object):
             'cmt': self.req_cmt,
             'rcmt': self.req_rcmt,
             'fcmt': self.req_fcmt,
+            'raddr': self.req_raddr,
             'lbl': self.req_lbl,
             'bc': self.req_bc,
             'bps_get': self.req_bps_get,
@@ -814,9 +845,10 @@ class SyncForm_t(PluginForm):
 
     def init_broker(self):
         print "[*] init_broker"
+        modname = self.input.text().encode('ascii', 'replace')
         cmdline = u"\"%s\" -u \"%s\" --idb \"%s\"" % (
                   os.path.join(PYTHON_PATH, PYTHON_BIN),
-                  BROKER_PATH, self.input.text().encode('ascii', 'replace'))
+                  BROKER_PATH, modname)
         print "[*] init broker,", cmdline
 
         self.broker = Broker(self.parser)
@@ -835,6 +867,7 @@ class SyncForm_t(PluginForm):
             return
 
         self.init_hotkeys()
+        self.broker.worker.name = modname
 
     def init_hotkeys(self):
         self.hotkeys_ctx = []
@@ -842,6 +875,7 @@ class SyncForm_t(PluginForm):
         self.init_single_hotkey("F3", self.broker.worker.bp_oneshot_notice)
         self.init_single_hotkey("Ctrl-F2", self.broker.worker.hbp_notice)
         self.init_single_hotkey("Ctrl-F3", self.broker.worker.hbp_oneshot_notice)
+        self.init_single_hotkey("Alt-F2", self.broker.worker.translate_notice)
         self.init_single_hotkey("F5", self.broker.worker.go_notice)
         self.init_single_hotkey("F10", self.broker.worker.so_notice)
         self.init_single_hotkey("F11", self.broker.worker.si_notice)

@@ -64,8 +64,9 @@ Build it
 0. >cd Y:\sync\ext_windbg\sync
 1. edit make.rb
     - set DDKPATH according to your target platform
-    - set ARCHS and TARGETS if necessary, currently use Free build for XP x86, 
-      Win7 x86 and x64
+    - set ARCHS and TARGETS if necessary, currently use Free build for XP x86, Win7 x86 and x64
+
+  Yeah sure you could have passed arguments to the script... I don't care, neither does the script.
 
 2. >ruby make.rb
 
@@ -195,14 +196,12 @@ Use it
     [sync] idb is enabled with the idb client matching the module name.
 
 6. IDA plugin's GUI
-    "Overwrite idb name" input field is meant to change the default idb name. 
-    It is the name that is used by the plugin to register with the dispatcher.
-    idb automatic switch is based on module name matching. In case of 
-    conflicting names (like an foo.exe and foo.dll), this can be used to ease 
-    the matching.
-    Please note, if you modify the input field while the sync is active, you 
-    have to re-register with the dispatcher; this can be done simply by using 
-    the "Restart" button.
+    "Overwrite idb name" input field is meant to change the default idb name. It is
+    the name that is used by the plugin to register with the dispatcher.
+    idb automatic switch is based on module name matching. In case of conflicting names
+    (like an foo.exe and foo.dll), this can be used to ease the matching.
+    Please note, if you modify the input field while the sync is active, you have to re-register
+    with the dispatcher; this can be done simply by using the "Restart" button.
 
 
 7. Use WinDbg and enjoy IDA's activity
@@ -229,7 +228,7 @@ Extra commands
     eip=00430db1 esp=0028ed94 ebp=00000000 iopl=0         nv up ei pl nz na po nc
     cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00000202
     image00000000_00400000+0x30db1:
-    00430db1 57    push edi
+    00430db1 57              push    edi
 
     0:000:x86> dd esp 8
     0028ed94  00000000 00433845 0028eebc 00000032
@@ -239,7 +238,7 @@ Extra commands
     [sync.dll]  !cmt called
 
     [IDA]
-    .text:00430DB1      push edi d; 0028ed94  00000000 00433845 0028eebc 00000032
+    .text:00430DB1                 push    edi             ; 0028ed94  00000000 00433845 0028eebc 00000032
 
 
 !rcmt [-a address]
@@ -250,7 +249,7 @@ Extra commands
     [sync] !rcmt called
 
     [IDA]
-    .text:00430DB1       push edi
+    .text:00430DB1                 push    edi
 
 
 !fcmt [-a address] <string>
@@ -268,6 +267,8 @@ Extra commands
 
     Note: calling this command without argument reset the function's comment.
 
+!raddr <expression>
+    => add a comment with rebased address evaluated from expression
 
 !lbl [-a address] <string>
     => add a label name at current eip in IDA
@@ -367,6 +368,12 @@ Extra commands
     Display (but not execute) saved data if called with no argument.
     Persistent storage is achieved using IDA's netnode feature.
 
+!ks
+    => This command is a DML enhanced output of 'kv' command. Code Addresses are clickable (!jmpto)
+    as well as data addresses (dc).
+
+!translate <base> <addr> <mod>
+    => Meant to be used from IDA (Alt-F2 shortcut), rebase an address based on its module's name and offset.
 
 
 Address optional argument
@@ -392,6 +399,7 @@ Syncplugin.py also registers Windbg command wrapper hotkeys.
 * F3  - Set one-shot breakpoint at cursor address
 * Ctrl-F2  - Set hardware breakpoint at cursor address
 * Ctrl-F3  - Set one-shot hardware breakpoint at cursor address
+* Alt-F2 - Translate (rebase in debugger) current cursor address
 * F5  - Go
 * F10 - Single step
 * F11 - Single trace
@@ -472,14 +480,14 @@ TODO
 KNOWN BUGS/LIMITATIONS
 -----------------------
 
-- Tested with Python 2.7, IDA 6.4, WinDDK 7600.16385.1, GNU gdb 7.4.1 (Debian)
+- Tested with Python 2.7, IDA 6.4, WinDDK 7600.16385.1, GNU gdb (GDB) 7.4.1 (Debian)
 - Warning: THERE IS NO AUTHENTICATION/ENCRYPTION or whatsoever between the parties;
   you're on your own.
 - With GDB, it seems that stop event is not called when using 'return' command.
 - With Windbg, IDA's client plugin gets notified even though encountered breakpoint
   uses a command string that makes him continue 'g'. This can cause major slow-down
   if there are too much of these events. A limited fix has been implemented, the
-  best solution is still to temporarily sync off.
+  best solution is still to sync off.
 - Graph window redrawing is quite slow for big graph.
 - Self modifying code is out of scope.
 

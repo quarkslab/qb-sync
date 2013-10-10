@@ -65,7 +65,7 @@ FromBase64(LPCSTR pszString, BYTE **ppbBinary)
 {
     HRESULT hRes=S_OK;
     DWORD cbBinary;
-    
+
     hRes = CryptStringToBinary(pszString, 0, CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
     if(FAILED(hRes)){
         dprintf("[sync] failed at CryptStringToBinaryA: %d\n", GetLastError());
@@ -86,7 +86,7 @@ FromBase64(LPCSTR pszString, BYTE **ppbBinary)
     }
 
     *((char *)((*ppbBinary)+cbBinary)) = 0;
-    
+
     return hRes;
 }
 
@@ -117,7 +117,7 @@ ToStringEnc(DWORD dwFlags, const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszStrin
         {
             free(*pszString);
             *pszString=NULL;
-        }   
+        }
         return E_FAIL;
     }
 
@@ -148,9 +148,28 @@ HRESULT
 ToHexString(const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszString)
 {
     HRESULT hRes;
-    
+
     hRes = ToStringEnc(CRYPT_STRING_HEX|CRYPT_STRING_NOCRLF, pbBinary, cbBinary, pszString);
     return hRes;
+}
+
+
+HRESULT
+NextChunk(char *cmd, char **nextc)
+{
+    char *tmp;
+
+    tmp = strchr(cmd, 0x20);
+    if (tmp == NULL)
+        return E_FAIL;
+
+    *tmp = 0;
+    *nextc = tmp+1;
+
+    if (**nextc == 0x3a)
+        NextChunk(*nextc, nextc);
+
+    return S_OK;
 }
 
 
@@ -278,7 +297,7 @@ HRESULT TunnelClose()
         if(FAILED(hRes))
             return hRes;
     }
-    
+
     if(!(g_Sock == INVALID_SOCKET)){
         iResult = closesocket(g_Sock);
         g_Sock = INVALID_SOCKET;
@@ -297,7 +316,7 @@ HRESULT TunnelClose()
 HRESULT TunnelPoll(int *lpNbBytesRecvd, LPSTR *lpBuffer)
 {
     HRESULT hRes=S_OK;
-    int iResult;   
+    int iResult;
     u_long iMode = 1;
 
     iResult = ioctlsocket(g_Sock, FIONBIO, &iMode);
@@ -306,19 +325,19 @@ HRESULT TunnelPoll(int *lpNbBytesRecvd, LPSTR *lpBuffer)
         printf("[sync] TunnelPoll ioctlsocket failed with error: %ld\n", iResult);
         return E_FAIL;
     }
-      
+
     hRes = TunnelReceive(lpNbBytesRecvd, lpBuffer);
     if (FAILED(hRes)){
         return hRes;
-    }   
-    
+    }
+
     iMode = 0;
     iResult = ioctlsocket(g_Sock, FIONBIO, &iMode);
     if (iResult != NO_ERROR)
     {
         printf("[sync] TunnelPoll ioctlsocket failed with error: %ld\n", iResult);
         return E_FAIL;
-    }    
+    }
     return hRes;
 }
 
@@ -337,7 +356,7 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     }
 
     iResult = recv(g_Sock, RecvBuffer, MAX_SEND, 0);
-    if ( iResult == SOCKET_ERROR ) 
+    if ( iResult == SOCKET_ERROR )
     {
         iResult =  WSAGetLastError();
         if (iResult == WSAEWOULDBLOCK)
@@ -349,7 +368,7 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
             dprintf("[sync] recv failed with error: %d, 0x%x\n", iResult, g_Sock);
             WsaErrMsg(iResult);
             goto error_close;
-        }        
+        }
     }
     else if ( iResult == 0 ) {
         dprintf("[sync] recv: connection closed\n");
@@ -372,7 +391,7 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     }
 
     return hRes;
-    
+
 error_close:
     g_Synchronized=FALSE;
     TunnelClose();
@@ -422,7 +441,7 @@ HRESULT TunnelSend(PCSTR Format, ...)
 HRESULT WsaErrMsg(int LastError)
 {
     HRESULT hRes=S_OK;
-    
+
     switch(LastError){
         case WSAECONNRESET:
             dprintf("        -> Connection reset by peer\n");
@@ -432,10 +451,10 @@ HRESULT WsaErrMsg(int LastError)
             break;
         case WSAECONNABORTED:
             dprintf("        -> Software caused connection abort\n");
-            break;            
+            break;
         default:
             break;
     }
-    
+
     return hRes;
 }
