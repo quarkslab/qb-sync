@@ -49,9 +49,7 @@ extern "C" {
 // Global variables initialized by query
 extern PDEBUG_CLIENT4        g_ExtClient;
 extern PDEBUG_CONTROL        g_ExtControl;
-extern PDEBUG_SYMBOLS        g_ExtSymbols;
-extern PDEBUG_SYMBOLS2       g_ExtSymbols2;
-extern PDEBUG_SYMBOLS3       g_ExtSymbols3;
+extern PDEBUG_SYMBOLS3       g_ExtSymbols;
 extern PDEBUG_REGISTERS      g_ExtRegisters;
 
 extern ULONG64 g_Offset, g_Base;

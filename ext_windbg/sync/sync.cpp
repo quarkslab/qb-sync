@@ -36,9 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 PDEBUG_CLIENT4              g_ExtClient;
 PDEBUG_CONTROL              g_ExtControl;
-PDEBUG_SYMBOLS              g_ExtSymbols;
-PDEBUG_SYMBOLS2             g_ExtSymbols2;
-PDEBUG_SYMBOLS3             g_ExtSymbols3;
+PDEBUG_SYMBOLS3             g_ExtSymbols;
 PDEBUG_REGISTERS            g_ExtRegisters;
 WINDBG_EXTENSION_APIS   ExtensionApis;
 
@@ -82,21 +80,7 @@ ExtQuery(PDEBUG_CLIENT4 Client)
     dprintf("[sync] IDebugControl loaded\n");
     #endif
 
-    if (FAILED(hRes = Client->QueryInterface(__uuidof(IDebugSymbols), (void **)&g_ExtSymbols)))
-        goto Fail;
-
-    #if VERBOSE >= 2
-    dprintf("[sync] IDebugSymbols loaded\n");
-    #endif
-
-    if (FAILED(hRes = Client->QueryInterface(__uuidof(IDebugSymbols2), (void **)&g_ExtSymbols2)))
-        goto Fail;
-
-    #if VERBOSE >= 2
-    dprintf("[sync] IDebugSymbols2 loaded\n");
-    #endif
-
-    if (FAILED(hRes = Client->QueryInterface(__uuidof(IDebugSymbols3), (void **)&g_ExtSymbols3)))
+    if (FAILED(hRes = Client->QueryInterface(__uuidof(IDebugSymbols3), (void **)&g_ExtSymbols)))
         goto Fail;
 
     #if VERBOSE >= 2
@@ -127,8 +111,6 @@ ExtRelease(void)
     g_ExtClient = NULL;
     EXT_RELEASE(g_ExtControl);
     EXT_RELEASE(g_ExtSymbols);
-    EXT_RELEASE(g_ExtSymbols2);
-    EXT_RELEASE(g_ExtSymbols3);
     EXT_RELEASE(g_ExtRegisters);
 }
 
@@ -215,7 +197,7 @@ UpdateState()
         Update module name stored in g_NameBuffer
         msdn: GetModuleNameString  method returns the name of the specified module.
         */
-        hRes=g_ExtSymbols2->GetModuleNameString(DEBUG_MODNAME_LOADED_IMAGE, DEBUG_ANY_ID, g_Base, g_NameBuffer, MAX_NAME, &NameSize);
+        hRes=g_ExtSymbols->GetModuleNameString(DEBUG_MODNAME_LOADED_IMAGE, DEBUG_ANY_ID, g_Base, g_NameBuffer, MAX_NAME, &NameSize);
         if(SUCCEEDED(hRes) & (NameSize>0) & (((char) *g_NameBuffer)!=0))
         {
             #if VERBOSE >= 2
@@ -1043,7 +1025,7 @@ jmpto(PDEBUG_CLIENT4 Client, PCSTR Args)
     Update module name stored in g_NameBuffer
     msdn: GetModuleNameString  method returns the name of the specified module.
     */
-    hRes=g_ExtSymbols2->GetModuleNameString(DEBUG_MODNAME_LOADED_IMAGE, DEBUG_ANY_ID, Base, g_NameBuffer, MAX_NAME, &NameSize);
+    hRes=g_ExtSymbols->GetModuleNameString(DEBUG_MODNAME_LOADED_IMAGE, DEBUG_ANY_ID, Base, g_NameBuffer, MAX_NAME, &NameSize);
     if(!(SUCCEEDED(hRes) & (NameSize>0) & (((char) *g_NameBuffer)!=0)))
     {
         dprintf("[sync] jumpto: failed to get module name for target address\n");
@@ -1201,7 +1183,7 @@ modmap(PDEBUG_CLIENT4 Client, PCSTR Args)
     msdn: The AddSyntheticModule method adds a synthetic module to the module list the debugger
           maintains for the current process.
     */
-    hRes=g_ExtSymbols3->AddSyntheticModule(ModBase, ModSize, Args, Args, DEBUG_ADDSYNTHMOD_DEFAULT);
+    hRes=g_ExtSymbols->AddSyntheticModule(ModBase, ModSize, Args, Args, DEBUG_ADDSYNTHMOD_DEFAULT);
     if(FAILED(hRes))
     {
         dprintf("[sync] modmap: AddSyntheticModule failed\n");
@@ -1211,11 +1193,11 @@ modmap(PDEBUG_CLIENT4 Client, PCSTR Args)
     /*
     msdn: The AddSyntheticSymbol method adds a synthetic symbol to a module in the current process.
     */
-    hRes=g_ExtSymbols3->AddSyntheticSymbol(ModBase, ModSize, Args, DEBUG_ADDSYNTHSYM_DEFAULT, NULL);
+    hRes=g_ExtSymbols->AddSyntheticSymbol(ModBase, ModSize, Args, DEBUG_ADDSYNTHSYM_DEFAULT, NULL);
     if(FAILED(hRes))
     {
         dprintf("[sync] modmap: AddSyntheticSymbol failed\n");
-        hRes=g_ExtSymbols3->RemoveSyntheticModule(ModBase);
+        hRes=g_ExtSymbols->RemoveSyntheticModule(ModBase);
         return E_FAIL;
     }
 
@@ -1255,7 +1237,7 @@ modunmap(PDEBUG_CLIENT4 Client, PCSTR Args)
     msdn: The RemoveSyntheticModule method removes a synthetic module from the module list
           the debugger maintains for the current process.
     */
-    hRes=g_ExtSymbols3->RemoveSyntheticModule(ModBase);
+    hRes=g_ExtSymbols->RemoveSyntheticModule(ModBase);
     if(FAILED(hRes))
     {
         dprintf("[sync] modunmap: RemoveSyntheticModule failed\n");
@@ -1757,7 +1739,7 @@ CALLBACK
 translate(PDEBUG_CLIENT4 Client, PCSTR Args)
 {
     HRESULT hRes;
-    ULONG64 Base, BaseRemote, Offset =0;
+    ULONG64 Base, BaseRemote, Offset;
     ULONG RemainderIndex;
     DEBUG_VALUE DebugValue = {};
     INIT_API();
@@ -1814,11 +1796,11 @@ translate(PDEBUG_CLIENT4 Client, PCSTR Args)
         DEBUG_OUTCTL_AMBIENT_DML,
         DEBUG_OUTPUT_NORMAL,
         "<?dml?>-> module <exec cmd=\"lmDvm%s\">%s</exec>"\
-        " found at 0x%x, rebased address: 0x%x"\
-        " (<exec cmd=\"bp 0x%x\">bp</exec>,"\
-        " <exec cmd=\"ba e 1 0x%x\">hbp</exec>,"\
-        " <exec cmd=\"dc 0x%x\">dc</exec>)\n",
-        Args, Args, Base, Offset, Offset, Offset);
+        " based at 0x%I64x, rebased address: 0x%I64x"\
+        " (<exec cmd=\"bp 0x%I64x\">bp</exec>,"\
+        " <exec cmd=\"ba e 1 0x%I64x\">hbp</exec>,"\
+        " <exec cmd=\"dc 0x%I64x\">dc</exec>)\n",
+        Args, Args, Base, Offset, Offset, Offset, Offset);
 
     return hRes;
 }
