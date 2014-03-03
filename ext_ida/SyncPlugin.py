@@ -1,5 +1,5 @@
-﻿#
-# Copyright (C) 2012-2013, Quarkslab.
+#
+# Copyright (C) 2012-2014, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -81,6 +81,8 @@ BROKER_PATH = os.path.join(os.path.normpath(os.path.dirname(__file__)), "broker.
 if not os.path.exists(BROKER_PATH):
     print "[-] broker path is not properly set, current value: <%s>" % BROKER_PATH
     sys.exit(0)
+
+IDB_PATH = os.path.dirname(os.path.realpath(idc.GetIdbPath()))
 
 CONNECT_BROKER_MAX_ATTEMPT = 4
 
@@ -853,7 +855,7 @@ class SyncForm_t(PluginForm):
 
         self.broker = Broker(self.parser)
         env = QProcess.systemEnvironment()
-        env.append("IDB_PATH=%s" % os.path.dirname(os.path.realpath(idc.GetIdbPath())))
+        env.append("IDB_PATH=%s" % IDB_PATH)
         env.append("PYTHON_PATH=%s" % os.path.realpath(PYTHON_PATH))
         env.append("PYTHON_BIN=%s" % PYTHON_BIN)
 
@@ -870,7 +872,6 @@ class SyncForm_t(PluginForm):
         self.broker.worker.name = modname
 
     def init_hotkeys(self):
-        self.hotkeys_ctx = []
         self.init_single_hotkey("F2", self.broker.worker.bp_notice)
         self.init_single_hotkey("F3", self.broker.worker.bp_oneshot_notice)
         self.init_single_hotkey("Ctrl-F2", self.broker.worker.hbp_notice)
@@ -907,6 +908,7 @@ class SyncForm_t(PluginForm):
         if state == QtCore.Qt.Checked:
             print "[*] sync enabled"
             # Restart broker
+            self.hotkeys_ctx = []
             self.init_broker()
         else:
             if self.broker:
@@ -927,9 +929,19 @@ class SyncForm_t(PluginForm):
         # Create label
         label = QtGui.QLabel('Overwrite idb name:')
 
+        # Check in conf for name overwrite
+        name = idaapi.get_root_filename()
+        confpath = os.path.join(os.path.realpath(IDB_PATH), '.sync')
+        if os.path.exists(confpath):
+            config = ConfigParser.SafeConfigParser()
+            config.read(confpath)
+            if config.has_option(name, 'name'):
+                name = config.get(name, 'name')
+                print "[sync] overwrite idb name with %s" % name
+
         # Create input field
         self.input = QtGui.QLineEdit(parent)
-        self.input.setText(idaapi.get_root_filename())
+        self.input.setText(name)
         self.input.setMaxLength = 256
         self.input.setFixedWidth(300)
 
@@ -961,6 +973,7 @@ class SyncForm_t(PluginForm):
 
         # Synchronization is enabled by default
         self.cb.toggle()
+
 
     def OnClose(self, form):
         print "[sync] form close"

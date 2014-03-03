@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012-2013, Quarkslab.
+# Copyright (C) 2012-2014, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -142,11 +142,12 @@ Use it
     directory first).
     Content of this file overwrite default values. It should respect a .ini file format:
 
-       [INTERFACE]
-       host=127.0.0.1
-       port=9100
+        [INTERFACE]
+        host=127.0.0.1
+        port=9100
 
     (This file is not created by default)
+
 
 1. Open IDB
 
@@ -201,6 +202,13 @@ Use it
     Please note, if you modify the input field while the sync is active, you have to re-register
     with the dispatcher; this can be done simply by using the "Restart" button.
 
+    Please note it is possible to alias by default the .sync config file:
+
+        [<ida_root_filename>]
+        name=<alias name>
+
+    The section name is the idb's root file name and has only one option: "name".
+
 
 7. Use WinDbg and enjoy IDA's activity
 
@@ -226,7 +234,7 @@ Extra commands
     eip=00430db1 esp=0028ed94 ebp=00000000 iopl=0         nv up ei pl nz na po nc
     cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00000202
     image00000000_00400000+0x30db1:
-    00430db1 57     push    edi
+    00430db1 57    push    edi
 
     0:000:x86> dd esp 8
     0028ed94  00000000 00433845 0028eebc 00000032
@@ -236,7 +244,7 @@ Extra commands
     [sync.dll]  !cmt called
 
     [IDA]
-    .text:00430DB1                 push    edi             ; 0028ed94  00000000 00433845 0028eebc 00000032
+    .text:00430DB1    push    edi             ; 0028ed94  00000000 00433845 0028eebc 00000032
 
 
 !rcmt [-a address]
@@ -247,7 +255,7 @@ Extra commands
     [sync] !rcmt called
 
     [IDA]
-    .text:00430DB1                 push    edi
+    .text:00430DB1    push    edi
 
 
 !fcmt [-a address] <string>
@@ -277,7 +285,7 @@ Extra commands
 
     [IDA]
     .text:000000000040271E meaningful_label:
-    .text:000000000040271E      mov     rdx, rsp
+    .text:000000000040271E    mov     rdx, rsp
 
 !cmd <string>
     => execute a command in WinDbg and add its output as comment at current eip in IDA
@@ -292,7 +300,7 @@ Extra commands
     [sync.dll]  !cmd r edi
 
     [IDA]
-    .text:00430DB1                 push    edi             ; edi=00000064
+    .text:00430DB1    push    edi             ; edi=00000064
 
 
 !bc <||on|off|set 0xBBGGRR>>
@@ -403,7 +411,6 @@ Syncplugin.py also registers Windbg command wrapper hotkeys.
 * F11 - Single trace
 
 These commands are only available when the current idb is active.
-
 
 
 GNU gdb (GDB)

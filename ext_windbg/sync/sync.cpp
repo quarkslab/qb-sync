@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2012-2013, Quarkslab.
+Copyright (C) 2012-2014, Quarkslab.
 
 This file is part of qb-sync.
 
@@ -386,6 +386,13 @@ EventFilterCb(BOOL *pbIgnoreEvent)
 
     if (FAILED(hRes))
         goto Exit;
+
+    // ignore some specific debug events
+    if ((Type == DEBUG_EVENT_CHANGE_SYMBOL_STATE) || (Type == DEBUG_EVENT_UNLOAD_MODULE) || (Type == DEBUG_EVENT_LOAD_MODULE))
+    {
+        *pbIgnoreEvent = true;
+        goto Exit;
+    }
 
     if ((Type != DEBUG_EVENT_BREAKPOINT) || (ExtraInformationUsed != 4))
         goto Exit;
@@ -1595,7 +1602,7 @@ KsParseLine(char *cmd, ULONG ProcType)
     HRESULT hRes;
     int res, i;
     int nbArgs = (ProcType==IMAGE_FILE_MACHINE_AMD64) ? 4 : 3;
-    char *childebp, *retaddr, *arg, *next, *callsite;
+    char *childebp, *retaddr, *arg, *next, *callsite = NULL;
 
     // match hex address...
     if (! (((*cmd >= 0x30) && (*cmd <= 0x39)) || ((*cmd >= 0x61) && (*cmd <= 0x66))))
@@ -1799,8 +1806,9 @@ translate(PDEBUG_CLIENT4 Client, PCSTR Args)
         " based at 0x%I64x, rebased address: 0x%I64x"\
         " (<exec cmd=\"bp 0x%I64x\">bp</exec>,"\
         " <exec cmd=\"ba e 1 0x%I64x\">hbp</exec>,"\
-        " <exec cmd=\"dc 0x%I64x\">dc</exec>)\n",
-        Args, Args, Base, Offset, Offset, Offset, Offset);
+        " <exec cmd=\"dc 0x%I64x\">dc</exec>,"\
+        " <exec cmd=\"r $ip=0x%I64x; r; !sync\">ip</exec>)\n",
+        Args, Args, Base, Offset, Offset, Offset, Offset, Offset);
 
     return hRes;
 }
