@@ -1,5 +1,5 @@
 ﻿#
-# Copyright (C) 2012-2013, Quarkslab.
+# Copyright (C) 2012-2014, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -20,12 +20,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import re
 import sys
 import socket
 import base64
 import tempfile
-from os import path
 import gdb
 import ConfigParser
 
@@ -39,7 +39,7 @@ PORT = 9100
 # functions gdb_execute, get_pid and get_maps courtesy of StalkR
 #------------------------------------------------------------------------------
 
-if path.exists("/usr/compat/linux/proc/self/cmdline"):
+if os.path.exists("/usr/compat/linux/proc/self/cmdline"):
     # FreeBSD
     SLASH_PROC = "/usr/compat/linux/proc"
 else:
@@ -93,7 +93,7 @@ def get_maps(verbose=True):
     # Linux
     # address                   perms offset  dev   inode   file
     # 7ffff6e2d000-7ffff6e31000 r-xp 00000000 fd:03 7064550 /lib/libattr.so.1.1.0
-    if path.exists(SLASH_PROC + "/%s/maps" % pid):  # Linux
+    if os.path.exists(SLASH_PROC + "/%s/maps" % pid):  # Linux
         for line in open(SLASH_PROC + "/%s/maps" % pid, "r"):
             e = filter(lambda x: x != '', line.strip().split(' '))  # avoid multiple spaces
             if not e:
@@ -106,7 +106,7 @@ def get_maps(verbose=True):
     # FreeBSD
     # start end resident privateresident obj perms ref_count shadow_count flags cow copy type file
     # 0x8048000 0x804a000 2 0 0xc2ed3cc0 r-x 1 0 0x1000 COW NC vnode /bin/cat NCH -1
-    elif path.exists(SLASH_PROC + "/%s/map" % pid):
+    elif os.path.exists(SLASH_PROC + "/%s/map" % pid):
         for line in open(SLASH_PROC + "/%s/map" % pid, "r"):
             e = filter(lambda x: x != '', line.strip().split(' '))  # avoid multiple spaces
             if not e:
@@ -116,7 +116,7 @@ def get_maps(verbose=True):
     # FreeBSD
     # start end resident privateresident obj perms ref_count shadow_count flags cow copy type file
     # 0x8048000 0x804a000 2 0 0xc2ed3cc0 r-x 1 0 0x1000 COW NC vnode /bin/cat NCH -1
-    elif path.exists(SLASH_PROC + "/%s/map" % pid):
+    elif os.path.exists(SLASH_PROC + "/%s/map" % pid):
         for line in open(SLASH_PROC + "/%s/map" % pid, "r"):
             e = filter(lambda x: x != '', line.strip().split(' '))  # avoid multiple spaces
             if not e:
@@ -430,4 +430,3 @@ if __name__ == "__main__":
     Bc(sync)
     Cmd(sync)
     Help()
-

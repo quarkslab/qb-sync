@@ -95,11 +95,13 @@ class DispatcherSrv():
 
     def bind(self, host, port):
         self.dbg_srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.dbg_srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.dbg_srv_sock.bind((host, port))
         self.srv_socks.append(self.dbg_srv_sock)
 
         if not (socket.gethostbyname(host) == '127.0.0.1'):
             self.localhost_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.localhost_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.localhost_sock.bind(('localhost', port))
             self.srv_socks.append(self.localhost_sock)
 

@@ -30,6 +30,7 @@ EXPORTS
     cmd
     cmt
     rcmt
+    rln
     fcmt
     raddr
     lbl

@@ -116,6 +116,8 @@ You can pick other configurations and platforms :
 
 Available Configurations:
 
+    - Win8.1 Release
+    - Win8.1 Debug
     - Win8 Debug
     - Win8 Release
     - Win7 Debug
@@ -275,6 +277,9 @@ Extra commands
 
 !raddr <expression>
     => add a comment with rebased address evaluated from expression
+
+!rln <expression>
+    => get symbol from the idb for the given address
 
 !lbl [-a address] <string>
     => add a label name at current eip in IDA
@@ -441,7 +446,7 @@ GDB support is experimental, however:
     (gdb) cmd x/i $pc
     [sync] command output: => 0x8049ca3:    push   edi
 
-    gdb) synchelp
+    (gdb) synchelp
     [sync] extension commands help:
      > sync <host>
      > syncoff
@@ -485,7 +490,8 @@ TODO
 KNOWN BUGS/LIMITATIONS
 -----------------------
 
-- Tested with Python 2.7, IDA 6.4, WinDDK 7600.16385.1, GNU gdb (GDB) 7.4.1 (Debian)
+- Tested with Python 2.7, IDA 6.4/6.5 (Windows, Linux and Mac OS X), WinDDK 7600.16385.1,
+  GNU gdb (GDB) 7.4.1 (Debian)
 - Warning: THERE IS NO AUTHENTICATION/ENCRYPTION or whatsoever between the parties;
   you're on your own.
 - With GDB, it seems that stop event is not called when using 'return' command.
@@ -519,4 +525,4 @@ GREETZ
 
 Hail to Bruce Dang, StalkR, @Ivanlef0u, Damien Aumaître,
 Sébastien Renaud and Kévin Szkudlapski for their help, feedbacks and thoughts.
-Ilfak Guilfanov for his help with IDA's internals.
+Ilfak Guilfanov and Igor Skochinsky for their help with IDA's internals.

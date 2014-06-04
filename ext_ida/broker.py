@@ -98,23 +98,25 @@ class BrokerSrv():
         args = [arg.replace('\"', '') for arg in list(tokenizer)]
 
         try:
-            proc = subprocess.Popen(args, shell=False)
+            proc = subprocess.Popen(args, shell=False, close_fds=True)
             pid = proc.pid
         except:
             pid = None
             self.announcement("failed to run dispatcher")
 
+        time.sleep(0.2)
         return pid
 
     def notify(self):
-        self.notify_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
         for attempt in range(RUN_DISPATCHER_MAX_ATTEMPT):
             try:
+                self.notify_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.notify_socket.connect((HOST, PORT))
                 break
             except:
-                self.announcement("failed to connect to dispatcher (attempt %d)" % (attempt + 1))
+                self.notify_socket.close()
+                if (attempt != 0):
+                    self.announcement("failed to connect to dispatcher (attempt %d)" % (attempt))
                 if (attempt == (RUN_DISPATCHER_MAX_ATTEMPT - 1)):
                     self.announcement("failed to connect to dispatcher, too much attempts, exiting...")
                     sys.exit()

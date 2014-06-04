@@ -211,7 +211,7 @@ TunnelCreate(PCSTR Host, PCSTR Port)
         // Create a SOCKET for connecting to server
         g_Sock = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
         if (g_Sock == INVALID_SOCKET) {
-           dbgout("[sync] socket failed with error: %ld\n", WSAGetLastError());
+            dbgout("[sync] socket failed with error: %ld\n", WSAGetLastError());
             hRes = E_FAIL;
             goto err_clean;
         }
@@ -254,11 +254,12 @@ TunnelCreate(PCSTR Host, PCSTR Port)
         break;
     }
 
-    if (g_Sock == INVALID_SOCKET)
+    if (g_Sock == INVALID_SOCKET){
         goto err_clean;
+    }
 
     freeaddrinfo(result);
-    g_Synchronized=TRUE;
+    g_Synchronized = TRUE;
 
     return S_OK;
 
@@ -280,16 +281,18 @@ HRESULT TunnelClose()
             return hRes;
     }
 
-    if(!(g_Sock == INVALID_SOCKET)){
+    if (!(g_Sock == INVALID_SOCKET))
+    {
         iResult = closesocket(g_Sock);
         g_Sock = INVALID_SOCKET;
 
-        if (iResult == SOCKET_ERROR)
+        if (iResult == SOCKET_ERROR){
             dbgout("[sync] closesocket failed with error %d\n", WSAGetLastError());
+        }
     }
 
     dbgout("[sync] sync is off\n");
-    g_Synchronized=FALSE;
+    g_Synchronized = FALSE;
     WSACleanup();
     return hRes;
 }
@@ -366,7 +369,8 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     err = memcpy_s(*lpBuffer, iResult+1, RecvBuffer, iResult);
     if (err) {
         dbgout("[sync] memcpy_s failed to copy received buffer\n");
-        free(lpBuffer);
+        free(*lpBuffer);
+        *lpBuffer = NULL;
         hRes = E_FAIL;
     } else {
         *lpNbBytesRecvd = iResult;
@@ -375,7 +379,7 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     return hRes;
 
 error_close:
-    g_Synchronized=FALSE;
+    g_Synchronized = FALSE;
     TunnelClose();
     return E_FAIL;
 }
@@ -411,7 +415,7 @@ HRESULT TunnelSend(PCSTR Format, ...)
         iResult = WSAGetLastError();
         dbgout("[sync] send failed with error %d, 0x%x\n", iResult, g_Sock);
         WsaErrMsg(iResult);
-        g_Synchronized=FALSE;
+        g_Synchronized = FALSE;
         TunnelClose();
         hRes=E_FAIL;
     }

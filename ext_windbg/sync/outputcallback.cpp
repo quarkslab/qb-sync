@@ -103,7 +103,8 @@ StdioOutputCallbacks::Output(
     else
     {
         hRes = ToBase64((const byte *)Text, (unsigned int)cbBinary, &pszString);
-        if (SUCCEEDED(hRes)) {
+        if (SUCCEEDED(hRes))
+        {
             TunnelSend("[sync] {\"type\":\"cmd\",\"msg\":\"%s\", \"base\":%llu,\"offset\":%llu}\n", pszString, g_Base, g_Offset);
             free(pszString);
         }

@@ -20,6 +20,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import sys
 import time
 import traceback
@@ -58,7 +59,7 @@ if not os.path.exists(os.path.join(PYTHON_PATH, PYTHON_BIN)):
     sys.exit(0)
 
 
-site_packages = os.path.join(PYTHON_PATH, "lib\\site-packages")
+site_packages = os.path.join(PYTHON_PATH, "lib", "site-packages")
 if not site_packages in sys.path:
     sys.path.insert(0, site_packages)
 
@@ -185,6 +186,15 @@ class RequestHandler(object):
 
         return offset
 
+    # demangle names
+    def demangle(self, name):
+        mask = idc.GetLongPrm(INF_SHORT_DN)
+        demangled = idc.Demangle(name, mask)
+        if demangled is None:
+            return name
+        else:
+            return demangled
+
     # prevent flooding debug engine with too much commands
     # sync plugin does NOT wait for any sort of ack
     # example: "^ Debuggee already running error in 'g'"
@@ -280,10 +290,6 @@ class RequestHandler(object):
     # add an address comment request at addr
     def req_raddr(self, hash):
         raddr, rbase, offset, base = hash['raddr'], hash['rbase'], hash['offset'], hash['base']
-
-        print "0x%x - 0x%x" % (offset, base)
-        print "0x%x - 0x%x" % (raddr, rbase)
-
         ea = self.rebase(base, offset)
         if not ea:
             return
@@ -298,6 +304,46 @@ class RequestHandler(object):
 
         self.append_cmt(ea, "0x%x (rebased from 0x%x)" % (addr, raddr))
         print ("[*] comment added at 0x%x" % ea)
+
+    # return idb's symbol for a given address
+    def req_rln(self, hash):
+        raddr, rbase, offset, base = hash['raddr'], hash['rbase'], hash['offset'], hash['base']
+
+        print("[*] 0x%x -  0x%x - 0x%x - 0x%x" % (raddr, rbase, offset, base))
+
+        addr = self.rebase(rbase, raddr)
+        if not addr:
+            print("[*] could not rebase this address (0x%x)" % raddr)
+            return
+
+        sym = idaapi.get_func_name(addr)
+        if sym:
+            sym = self.demangle(sym)
+            func = idaapi.get_func(addr)
+            if not func:
+                print ("[*] could not find func for 0x%x" % addr)
+                return
+
+            lck = idaapi.lock_func(func)
+
+            limits = idaapi.area_t()
+            if idaapi.get_func_limits(func, limits):
+                if limits.startEA != addr:
+                    if (addr > limits.startEA):
+                        sym = "%s%s0x%x" % (sym, "+", addr - limits.startEA)
+                    else:
+                        sym = "%s%s0x%x" % (sym, "-", limits.startEA - addr)
+            lck = None
+        else:
+            sym = idc.Name(addr)
+            if sym:
+                sym = self.demangle(sym)
+
+        if sym:
+            self.notice_broker("cmd", "\"cmd\":\"%s\"" % sym)
+            print ("[*] resolved symbol: %s" % sym)
+        else:
+            print ("[*] could not resolve symbol for address 0x%x" % addr)
 
     # add label request at addr
     def req_lbl(self, hash):
@@ -610,6 +656,7 @@ class RequestHandler(object):
             'rcmt': self.req_rcmt,
             'fcmt': self.req_fcmt,
             'raddr': self.req_raddr,
+            'rln': self.req_rln,
             'lbl': self.req_lbl,
             'bc': self.req_bc,
             'bps_get': self.req_bps_get,
@@ -722,18 +769,18 @@ class GraphManager():
         if sys.platform == "win32":
             dll = ctypes.windll[idaname + ".wll"]
         elif sys.platform == "linux2":
-            dll = ctypes.cdll["lib" + idaname + ".so"]
+            dll = ctypes.CDLL(None)
         elif sys.platform == "darwin":
-            dll = ctypes.cdll["lib" + idaname + ".dylib"]
+            dll = ctypes.CDLL(None)
 
         #-------
 
         # ui_notification_t dispatcher
-        callui = ctypes.c_int.in_dll(dll, "callui")
+        callui = ctypes.c_void_p.in_dll(dll, "callui")
         print "    callui 0x%x" % callui.value
 
         # graph_notification_t dispatcher
-        grentry = ctypes.c_int.in_dll(dll, "grentry")
+        grentry = ctypes.c_void_p.in_dll(dll, "grentry")
         print "    grentry 0x%x" % grentry.value
 
         #-------
@@ -746,9 +793,20 @@ class GraphManager():
         """
 
         ui_get_current_tform = ctypes.c_int(75)
-        func_ptr_type = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int)
-        get_current_tform = func_ptr_type(callui.value)
-        parent_tform = get_current_tform(ui_get_current_tform)
+
+        # workaround for IDA linux binary compiled by GCC
+        # callui return value is returned through an implicit extra argument
+        if sys.platform == "linux2":
+            return_value = ctypes.c_int(0)
+            func_ptr_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int)
+            get_current_tform = func_ptr_type(callui.value)
+            get_current_tform(ctypes.byref(return_value), ui_get_current_tform)
+            parent_tform = return_value.value
+        else:
+            func_ptr_type = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int)
+            get_current_tform = func_ptr_type(callui.value)
+            parent_tform = get_current_tform(ui_get_current_tform)
+
         print "    curr tform * 0x%x" % parent_tform
 
         #-------
@@ -761,9 +819,20 @@ class GraphManager():
         """
 
         ui_find_tform = ctypes.c_int(74)
-        func_ptr_type = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p)
-        find_tform = func_ptr_type(callui.value)
-        parent_tform2 = find_tform(ui_find_tform, ctypes.c_char_p("IDA View-A"))
+
+        # workaround for IDA linux binary compiled by GCC
+        # callui return value is returned through an implicit extra argument
+        if sys.platform == "linux2":
+            return_value = ctypes.c_int(0)
+            func_ptr_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_char_p)
+            find_tform = func_ptr_type(callui.value)
+            find_tform(ctypes.byref(return_value), ui_find_tform, ctypes.c_char_p("IDA View-A"))
+            parent_tform2 = return_value.value
+        else:
+            func_ptr_type = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p)
+            find_tform = func_ptr_type(callui.value)
+            parent_tform2 = find_tform(ui_find_tform, ctypes.c_char_p("IDA View-A"))
+
         print "    find tform * 0x%x (IDA View-A)" % parent_tform2
 
         #-------
@@ -842,6 +911,7 @@ class SyncForm_t(PluginForm):
         if self.broker:
             broker = self.broker
             self.broker = None
+            broker.worker.cb_restore_last_line()
             broker.worker.kill_notice()
             broker.waitForFinished(1500)
 
@@ -973,7 +1043,6 @@ class SyncForm_t(PluginForm):
 
         # Synchronization is enabled by default
         self.cb.toggle()
-
 
     def OnClose(self, form):
         print "[sync] form close"

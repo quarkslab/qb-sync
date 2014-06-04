@@ -67,7 +67,7 @@ FromBase64(LPCSTR pszString, BYTE **ppbBinary)
     DWORD cbBinary;
 
     hRes = CryptStringToBinary(pszString, 0, CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
-    if(FAILED(hRes)){
+    if (FAILED(hRes)){
         dprintf("[sync] failed at CryptStringToBinaryA: %d\n", GetLastError());
         return E_FAIL;
     }
@@ -80,7 +80,7 @@ FromBase64(LPCSTR pszString, BYTE **ppbBinary)
     }
 
     hRes = CryptStringToBinaryA(pszString, 0, CRYPT_STRING_BASE64, *ppbBinary, &cbBinary, NULL, NULL);
-    if(FAILED(hRes)){
+    if (FAILED(hRes)){
         dprintf("[sync] failed at CryptStringToBinaryA: %d\n", GetLastError());
         return E_FAIL;
     }
@@ -98,7 +98,7 @@ ToStringEnc(DWORD dwFlags, const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszStrin
     DWORD cchString;
 
     hRes = CryptBinaryToStringA(pbBinary, cbBinary, dwFlags, NULL, &cchString);
-    if(FAILED(hRes)){
+    if (FAILED(hRes)){
         dprintf("[sync] send failed at CryptBinaryToString: %d\n", GetLastError());
         return E_FAIL;
     }
@@ -111,12 +111,12 @@ ToStringEnc(DWORD dwFlags, const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszStrin
     }
 
     hRes = CryptBinaryToStringA(pbBinary, cbBinary, dwFlags, *pszString, &cchString);
-    if(FAILED(hRes)){
+    if (FAILED(hRes)){
         dprintf("[sync] failed at CryptBinaryToString: %d\n", GetLastError());
         if (*pszString)
         {
             free(*pszString);
-            *pszString=NULL;
+            *pszString = NULL;
         }
         return E_FAIL;
     }
@@ -166,8 +166,9 @@ NextChunk(char *cmd, char **nextc)
     *tmp = 0;
     *nextc = tmp+1;
 
-    if (**nextc == 0x3a)
+    if (**nextc == 0x3a){
         NextChunk(*nextc, nextc);
+    }
 
     return S_OK;
 }
@@ -178,8 +179,9 @@ HRESULT TunnelIsUp()
 {
     HRESULT hRes=S_OK;
 
-    if( (g_Sock==INVALID_SOCKET) | (!g_Synchronized))
+    if ((g_Sock==INVALID_SOCKET) | (!g_Synchronized)){
         hRes = E_FAIL;
+    }
 
     return hRes;
 }
@@ -229,7 +231,7 @@ TunnelCreate(PCSTR Host, PCSTR Port)
         // Create a SOCKET for connecting to server
         g_Sock = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
         if (g_Sock == INVALID_SOCKET) {
-           dprintf("[sync] socket failed with error: %ld\n", WSAGetLastError());
+            dprintf("[sync] socket failed with error: %ld\n", WSAGetLastError());
             hRes = E_FAIL;
             goto err_clean;
         }
@@ -261,7 +263,8 @@ TunnelCreate(PCSTR Host, PCSTR Port)
 
         // Connect to server.
         iResult = connect(g_Sock, ptr->ai_addr, (int)ptr->ai_addrlen);
-        if (iResult == SOCKET_ERROR) {
+        if (iResult == SOCKET_ERROR)
+        {
             closesocket(g_Sock);
             g_Sock = INVALID_SOCKET;
             dprintf("[sync] connect failed (check if broker is running)\n");
@@ -272,11 +275,12 @@ TunnelCreate(PCSTR Host, PCSTR Port)
         break;
     }
 
-    if (g_Sock == INVALID_SOCKET)
+    if (g_Sock == INVALID_SOCKET){
         goto err_clean;
+    }
 
     freeaddrinfo(result);
-    g_Synchronized=TRUE;
+    g_Synchronized = TRUE;
 
     return S_OK;
 
@@ -291,23 +295,26 @@ HRESULT TunnelClose()
     HRESULT hRes=S_OK;
     int iResult;
 
-    if(SUCCEEDED(TunnelIsUp()))
+    if (SUCCEEDED(TunnelIsUp()))
     {
         hRes=TunnelSend("[notice]{\"type\":\"dbg_quit\",\"msg\":\"dbg disconnected\"}\n");
-        if(FAILED(hRes))
+        if (FAILED(hRes)){
             return hRes;
+        }
     }
 
-    if(!(g_Sock == INVALID_SOCKET)){
+    if (!(g_Sock == INVALID_SOCKET))
+    {
         iResult = closesocket(g_Sock);
         g_Sock = INVALID_SOCKET;
 
-        if (iResult == SOCKET_ERROR)
+        if (iResult == SOCKET_ERROR){
             dprintf("[sync] closesocket failed with error %d\n", WSAGetLastError());
+        }
     }
 
     dprintf("[sync] sync is off\n");
-    g_Synchronized=FALSE;
+    g_Synchronized = FALSE;
     WSACleanup();
     return hRes;
 }
@@ -333,6 +340,7 @@ HRESULT TunnelPoll(int *lpNbBytesRecvd, LPSTR *lpBuffer)
 
     iMode = 0;
     iResult = ioctlsocket(g_Sock, FIONBIO, &iMode);
+
     if (iResult != NO_ERROR)
     {
         printf("[sync] TunnelPoll ioctlsocket failed with error: %ld\n", iResult);
@@ -349,7 +357,7 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     errno_t err;
     *lpNbBytesRecvd = 0;
 
-    if(FAILED(hRes=TunnelIsUp()))
+    if (FAILED(hRes=TunnelIsUp()))
     {
         dprintf("[sync] TunnelReceive: tunnel is not available\n");
         return hRes;
@@ -384,7 +392,8 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     err = memcpy_s(*lpBuffer, iResult+1, RecvBuffer, iResult);
     if (err) {
         dprintf("[sync] memcpy_s failed to copy received buffer\n");
-        free(lpBuffer);
+        free(*lpBuffer);
+        *lpBuffer = NULL;
         hRes = E_FAIL;
     } else {
         *lpNbBytesRecvd = iResult;
@@ -393,7 +402,7 @@ HRESULT TunnelReceive(int *lpNbBytesRecvd, LPSTR *lpBuffer)
     return hRes;
 
 error_close:
-    g_Synchronized=FALSE;
+    g_Synchronized = FALSE;
     TunnelClose();
     return E_FAIL;
 }
@@ -406,7 +415,7 @@ HRESULT TunnelSend(PCSTR Format, ...)
     int iResult;
     size_t cbRemaining;
 
-    if(FAILED(hRes=TunnelIsUp()))
+    if (FAILED(hRes=TunnelIsUp()))
     {
         dprintf("[sync] TunnelSend: tunnel is unavailable\n");
         return hRes;
@@ -416,20 +425,21 @@ HRESULT TunnelSend(PCSTR Format, ...)
     hRes = StringCbVPrintfEx(SendBuffer, MAX_SEND, NULL, &cbRemaining, STRSAFE_NULL_ON_FAILURE, Format, Args);
     va_end(Args);
 
-    if (FAILED(hRes))
+    if (FAILED(hRes)){
         return hRes;
+    }
 
     #if VERBOSE >= 2
     dprintf("[sync] send 0x%x bytes, %s\n", MAX_SEND-cbRemaining, SendBuffer);
     #endif
 
     iResult = send(g_Sock, (const char *)SendBuffer, MAX_SEND-((unsigned int)cbRemaining), 0);
-    if(iResult == SOCKET_ERROR)
+    if (iResult == SOCKET_ERROR)
     {
         iResult = WSAGetLastError();
         dprintf("[sync] send failed with error %d, 0x%x\n", iResult, g_Sock);
         WsaErrMsg(iResult);
-        g_Synchronized=FALSE;
+        g_Synchronized = FALSE;
         TunnelClose();
         hRes=E_FAIL;
     }
