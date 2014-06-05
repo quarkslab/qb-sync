@@ -680,9 +680,8 @@ class Broker(QtCore.QProcess):
         print "[*] broker new state: ", states[new_state]
 
     def cb_broker_on_out(self):
-        buffer = self.readAll()
-        # buffer is a PySide.QtCore.QByteArray
-        buffer = str(buffer).encode("ascii")
+        # readAll() returns a PySide.QtCore.QByteArray
+        buffer = self.readAll().data().encode("ascii")
         batch = buffer.split('\n')
         for req in batch:
             self.worker.parse_exec(req)
@@ -845,10 +844,6 @@ class GraphManager():
         grcode_get_graph_viewer = ctypes.c_int(0x100 + 1)
         func_ptr_type_1 = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
         get_graph_viewer = func_ptr_type_1(grentry.value)
-
-        # self.gv = ctypes.c_void_p()
-        # ret = get_graph_viewer(grcode_get_graph_viewer, parent_tform, ctypes.byref(self.gv))
-        # print "    graph viewer %s, ret 0x%x" % (repr(self.gv), ret)
 
         self.gv2 = ctypes.c_void_p()
         ret = get_graph_viewer(grcode_get_graph_viewer, parent_tform2, ctypes.byref(self.gv2))

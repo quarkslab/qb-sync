@@ -20,12 +20,13 @@
 qb-sync plugin
 --------------
 
-Synchronize a WinDbg/GDB/OllyDbg2 debug session with IDA disassembler's view.
+Synchronize a WinDbg/GDB/LLDB/OllyDbg2 debug session with IDA disassembler's view.
 Save data (comment, command output) from debugger to disassembler (IDB).
 
 Content:
 - ext_windbg/sync: WinDbg extension source files, once built: sync.dll
 - ext_gdb/sync.py: GDB plugin
+- ext_lldb/sync.py: LLDB plugin
 - ext_olly/: OllyDbg v2 plugin
 
 - ext_ida/SyncPlugin.py: IDA plugin, receive async events from broker
@@ -461,6 +462,38 @@ For FreeBSD 9.0-RELEASE, edit /etc/fstab
 linprocfs  /usr/compat/linux/proc  linprocfs  rw  0  0
 
 
+LLDB
+----
+
+LLDB support is experimental, however:
+
+0. Load extension (can also be added in ~/.lldbinit)
+
+    lldb> command script import sync
+
+1. Sync with host
+
+    lldb> process launch -s
+    lldb> sync
+    [sync] connecting to localhost
+    [sync] sync is now enabled with host localhost
+    [sync] event handler started
+
+2. Use commands
+
+    lldb> synchelp
+    [sync] extension commands help:
+     > sync <host>                   = synchronize with <host> or the default value
+     > syncoff                       = stop synchronization
+     > cmt <string>                  = add comment at current eip in IDA
+     > rcmt <string>                 = reset comments at current eip in IDA
+     > fcmt <string>                 = add a function comment for 'f = get_func(eip)' in IDA
+     > cmd <string>                  = execute command <string> and add its output as comment at current eip in IDA
+     > bc <on|off|>                  = enable/disable path coloring in IDA
+                                       color a single instruction at current eip if called without argument
+    lldb> cmt moo
+
+
 OllyDbg2
 ---------
 
@@ -490,8 +523,8 @@ TODO
 KNOWN BUGS/LIMITATIONS
 -----------------------
 
-- Tested with Python 2.7, IDA 6.4/6.5 (Windows, Linux and Mac OS X), WinDDK 7600.16385.1,
-  GNU gdb (GDB) 7.4.1 (Debian)
+- Tested with Python 2.7, IDA 6.4/6.5/6.6 (Windows, Linux and Mac OS X), WinDDK 7600.16385.1,
+  GNU gdb (GDB) 7.4.1 (Debian), lldb 310.2.37
 - Warning: THERE IS NO AUTHENTICATION/ENCRYPTION or whatsoever between the parties;
   you're on your own.
 - With GDB, it seems that stop event is not called when using 'return' command.
