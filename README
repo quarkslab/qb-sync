@@ -52,6 +52,8 @@ http://www.hex-rays.com/products/ida/support/download.shtml
 For installation note see:
 http://www.hexblog.com/?p=333
 
+Note: since IDA 6.6, PySide is shipped by default with IDA.
+
 Windows DDK (including Debugging Tools) is required to build the WinDbg's extension.
 
 Python and Ruby are required by various scripts. argparse is
@@ -528,12 +530,14 @@ KNOWN BUGS/LIMITATIONS
 - Warning: THERE IS NO AUTHENTICATION/ENCRYPTION or whatsoever between the parties;
   you're on your own.
 - With GDB, it seems that stop event is not called when using 'return' command.
+- With GDB, multi-threading debugging have issues with signals.
 - With Windbg, IDA's client plugin gets notified even though encountered breakpoint
   uses a command string that makes him continue 'g'. This can cause major slow-down
   if there are too much of these events. A limited fix has been implemented, the
   best solution is still to sync off.
 - Graph window redrawing is quite slow for big graph.
 - Self modifying code is out of scope.
+- With IDA, qb-sync shortcuts conflicts in Linux environment.
 
 
 LICENSE

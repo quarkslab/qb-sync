@@ -23,30 +23,28 @@
 import os
 import re
 import sys
+import time
 import socket
+import errno
 import base64
 import tempfile
+import threading
 import gdb
-import ConfigParser
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
+
 
 VERBOSE = 0
 
 HOST = "localhost"
 PORT = 9100
 
-
-#------------------------------------------------------------------------------
-# functions gdb_execute, get_pid and get_maps courtesy of StalkR
-#------------------------------------------------------------------------------
-
-if os.path.exists("/usr/compat/linux/proc/self/cmdline"):
-    # FreeBSD
-    SLASH_PROC = "/usr/compat/linux/proc"
-else:
-    # Linux
-    SLASH_PROC = "/proc"
+TIMER_PERIOD = 0.2
 
 
+# function gdb_execute courtesy of StalkR
 # Wrapper when gdb.execute(cmd, to_string=True) does not work
 def gdb_execute(cmd):
     f = tempfile.NamedTemporaryFile()
@@ -54,12 +52,14 @@ def gdb_execute(cmd):
     gdb.execute("set logging redirect on")
     gdb.execute("set logging overwrite")
     gdb.execute("set logging on")
+
     try:
         gdb.execute(cmd)
-    except Exception, e:
+    except Exception as e:
         gdb.execute("set logging off")
         f.close()
         raise e
+
     gdb.execute("set logging off")
     s = open(f.name, "r").read()
     f.close()
@@ -67,19 +67,12 @@ def gdb_execute(cmd):
 
 
 def get_pid():
-    info_program = gdb.execute("info program", to_string=True)
-    if 'not being run' in info_program:
-        return False
-    elif 'child process' in info_program:
-        return re.search("child process ([0-9]+)", info_program).group(1)
-    elif 'child Thread' in info_program:
-        if gdb.VERSION > 7.2:
-            info_inferiors = gdb.execute("info inferiors", to_string=True)
-        else:  # bug in gdb <= 7.2, result printed to ui_out
-            info_inferiors = gdb_execute("info inferiors")
-        return re.search("\* 1 *process ([0-9]+)", info_inferiors).group(1)
-    else:
-        raise Exception("get_pid(): don't know how to understand 'info program'")
+    inferiors = gdb.inferiors()
+    for inf in gdb.inferiors():
+        if inf.is_valid():
+            return inf.pid
+
+    raise Exception("get_pid(): failed to find program's pid")
 
 
 def get_maps(verbose=True):
@@ -87,47 +80,44 @@ def get_maps(verbose=True):
     pid = get_pid()
     if pid is False:
         if verbose:
-            print "Program not started"
+            print("Program not started")
         return []
     maps = []
-    # Linux
-    # address                   perms offset  dev   inode   file
-    # 7ffff6e2d000-7ffff6e31000 r-xp 00000000 fd:03 7064550 /lib/libattr.so.1.1.0
-    if os.path.exists(SLASH_PROC + "/%s/maps" % pid):  # Linux
-        for line in open(SLASH_PROC + "/%s/maps" % pid, "r"):
-            e = filter(lambda x: x != '', line.strip().split(' '))  # avoid multiple spaces
-            if not e:
+
+    mapping = gdb_execute('info proc mappings')
+    try:
+        for line in mapping.splitlines():
+            e = [x for x in line.strip().split() if x != '']
+            if (not e) or (len(e) < 5):
                 continue
-            elif len(e) == 5:
-                e += ['']  # no file name
-            startend, perms, offset, dev, inode, file = e
-            start, end = startend.split('-')
-            maps += [(int(start, 16), int(end, 16), perms, file)]
-    # FreeBSD
-    # start end resident privateresident obj perms ref_count shadow_count flags cow copy type file
-    # 0x8048000 0x804a000 2 0 0xc2ed3cc0 r-x 1 0 0x1000 COW NC vnode /bin/cat NCH -1
-    elif os.path.exists(SLASH_PROC + "/%s/map" % pid):
-        for line in open(SLASH_PROC + "/%s/map" % pid, "r"):
-            e = filter(lambda x: x != '', line.strip().split(' '))  # avoid multiple spaces
-            if not e:
-                continue
-            start, end, perms, file = e[0], e[1], e[5], e[12]
-            maps += [(int(start, 16), int(end, 16), perms, file)]
-    # FreeBSD
-    # start end resident privateresident obj perms ref_count shadow_count flags cow copy type file
-    # 0x8048000 0x804a000 2 0 0xc2ed3cc0 r-x 1 0 0x1000 COW NC vnode /bin/cat NCH -1
-    elif os.path.exists(SLASH_PROC + "/%s/map" % pid):
-        for line in open(SLASH_PROC + "/%s/map" % pid, "r"):
-            e = filter(lambda x: x != '', line.strip().split(' '))  # avoid multiple spaces
-            if not e:
-                continue
-            start, end, perms, file = e[0], e[1], e[5], e[12]
-            maps += [(int(start, 16), int(end, 16), perms, file)]
-    else:
-        raise Exception("get_maps(): cannot find a /proc/%s/map{,s} file" % pid)
+            else:
+                if not e[0].startswith('0x'):
+                    continue
+
+                name = (' ').join(e[4:])
+                e = e[:4] + [name]
+                start, end, size, offset, name = e
+                maps.append([int(start, 16), int(end, 16), int(size, 16), name])
+
+    except Exception as e:
+        print(e)
+        print("[sync] failed to parse info proc mappings")
+
     return maps
 
-#------------------------------------------------------------------------------
+
+def get_mod_by_addr(maps, addr):
+    for mod in maps:
+        if (addr > mod[0]) and (addr < mod[1]):
+            return [mod[0], mod[3]]
+    return None
+
+
+def get_mod_by_name(maps, name):
+    for mod in maps:
+        if os.path.basename(mod[3]) == name:
+            return [mod[0], mod[3]]
+    return None
 
 
 def get_pc():
@@ -146,11 +136,11 @@ class Tunnel():
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((host, PORT))
-        except socket.error, msg:
+        except socket.error as msg:
             self.sock.close()
             self.sock = None
             self.sync = False
-            print "[sync] Tunnel initialization  error: %s" % msg
+            print("[sync] Tunnel initialization  error: %s" % msg)
             return None
 
         self.sync = True
@@ -158,18 +148,38 @@ class Tunnel():
     def is_up(self):
         return (self.sock != None and self.sync == True)
 
+    def poll(self):
+        if not self.is_up():
+            return None
+
+        self.sock.setblocking(False)
+
+        try:
+            msg = self.sock.recv(4096).decode()
+        except socket.error as e:
+            err = e.args[0]
+            if (err == errno.EAGAIN or err == errno.EWOULDBLOCK):
+                return '\n'
+            else:
+                self.close()
+                return None
+
+        self.sock.setblocking(True)
+        return msg
+
     def send(self, msg):
         if not self.sock:
-            print "[sync] tunnel_send: tunnel is unavailable (did you forget to sync ?)"
+            print("[sync] tunnel_send: tunnel is unavailable (did you forget to sync ?)")
             return
 
         try:
-            self.sock.send(msg)
-        except socket.error, msg:
+            self.sock.send(msg.encode())
+        except socket.error as msg:
+            print(msg)
             self.sync = False
             self.close()
 
-            print "[sync] tunnel_send error: %s" % msg
+            print("[sync] tunnel_send error: %s" % msg)
 
     def close(self):
         if self.is_up():
@@ -178,11 +188,74 @@ class Tunnel():
         if self.sock:
             try:
                 self.sock.close()
-            except socket.error, msg:
-                print "[sync] tunnel_close error: %s" % msg
+            except socket.error as msg:
+                print("[sync] tunnel_close error: %s" % msg)
 
         self.sync = False
         self.sock = None
+
+
+# run commands
+# from https://sourceware.org/gdb/onlinedocs/gdb/Basic-Python.html#Basic-Python
+# GDB is not thread-safe. If your Python program uses multiple threads,
+# you must be careful to only call GDB-specific functions in the GDB thread.
+# post_event ensures this.
+class Runner():
+
+    def __init__(self, batch):
+        self.batch = batch
+
+    def __call__(self):
+        for cmd in self.batch:
+            if (cmd == ''):
+                continue
+            gdb.execute(cmd, True, False)
+
+
+# periodically poll socket in a dedicated thread
+class Poller(threading.Thread):
+
+    def __init__(self, sync):
+        threading.Thread.__init__(self)
+        self.evt_enabled = threading.Event()
+        self.evt_enabled.clear()
+        self.evt_stop = threading.Event()
+        self.evt_stop.clear()
+        self.sync = sync
+
+    def run(self):
+        while True:
+            if self.evt_stop.is_set():
+                break
+
+            self.evt_enabled.wait()
+
+            if not self.sync.tunnel:
+                break
+
+            if self.sync.tunnel.is_up():
+                self.poll()
+
+            time.sleep(TIMER_PERIOD)
+
+    def poll(self):
+        msg = self.sync.tunnel.poll()
+        if msg:
+            batch = [cmd.strip() for cmd in msg.split('\n') if cmd]
+            if batch:
+                gdb.post_event(Runner(batch))
+        else:
+            gdb.post_event(Runner(['syncoff']))
+            self.stop()
+
+    def enable(self):
+        self.evt_enabled.set()
+
+    def disable(self):
+        self.evt_enabled.clear()
+
+    def stop(self):
+        self.evt_stop.set()
 
 
 class Sync(gdb.Command):
@@ -194,9 +267,13 @@ class Sync(gdb.Command):
         self.base = None
         self.offset = None
         self.tunnel = None
+        self.poller = None
         gdb.events.exited.connect(self.exit_handler)
+        gdb.events.cont.connect(self.cont_handler)
         gdb.events.stop.connect(self.stop_handler)
-        print "[sync] commands added"
+        gdb.events.new_objfile.connect(self.newobj_handler)
+
+        print("[sync] commands added")
 
     def identity(self):
         f = tempfile.NamedTemporaryFile()
@@ -209,29 +286,33 @@ class Sync(gdb.Command):
         if not self.maps:
             self.maps = get_maps()
             if not self.maps:
-                print "[sync] failed to get maps"
+                print("[sync] failed to get maps")
                 return None
 
-        for mod in self.maps:
-            if (addr > mod[0]) and (addr < mod[1]):
-                return [mod[0], mod[3]]
-        return None
+        return get_mod_by_addr(self.maps, addr)
 
     def locate(self):
         offset = get_pc()
         if not offset:
-            print "<not running>"
+            print("<not running>")
             return
+
+        if not self.pid:
+            self.pid = get_pid()
+            if not self.pid:
+                print("[sync] failed to get pid")
+                return
+            else:
+                print("[sync] pid: %s" % self.pid)
 
         self.offset = offset
         mod = self.mod_info(self.offset)
         if mod:
             if VERBOSE >= 2:
-                print "[sync] mod found"
-                print mod
+                print("[sync] mod found")
+                print(mod)
 
-            base = mod[0]
-            sym = mod[1]
+            base, sym = mod
 
             if self.base != base:
                 self.tunnel.send("[notice]{\"type\":\"module\",\"path\":\"%s\"}\n" % sym)
@@ -239,58 +320,77 @@ class Sync(gdb.Command):
 
             self.tunnel.send("[sync]{\"type\":\"loc\",\"base\":%d,\"offset\":%d}\n" % (self.base, self.offset))
         else:
-            print "[sync] unknown module at 0x%x" % self.offset
+            print("[sync] unknown module at 0x%x" % self.offset)
             self.base = None
             self.offset = None
 
+    def create_poll_timer(self):
+        if not self.poller:
+            self.poller = Poller(self)
+            self.poller.start()
+
+    def release_poll_timer(self):
+        if self.poller:
+            self.poller.stop()
+            self.poller = None
+
+    def newobj_handler(self, event):
+        # force a new capture
+        self.maps = None
+
+    def cont_handler(self, event):
+        if self.tunnel:
+            self.poller.disable()
+        return ''
+
     def stop_handler(self, event):
-        if VERBOSE >= 2:
-            print "[sync] stop_handler"
-
-        if not self.tunnel:
-            return
-
-        if not self.pid:
-            self.pid = get_pid()
-            if not self.pid:
-                print "[sync] failed to get pid"
-                return
-            else:
-                print "[sync] pid: %s" % self.pid
-
-        self.locate()
+        if self.tunnel:
+            self.locate()
+            self.poller.enable()
+        return ''
 
     def exit_handler(self, event):
         self.reset_state()
-        print "[sync] exit, sync finished"
+        print("[sync] exit, sync finished")
 
     def reset_state(self):
-        if self.tunnel:
-            self.tunnel.close()
-            self.tunnel = None
+        try:
+            self.release_poll_timer()
 
-        self.pid = None
-        self.maps = None
-        self.base = None
-        self.offset = None
+            if self.tunnel:
+                self.tunnel.close()
+                self.tunnel = None
+
+            self.pid = None
+            self.maps = None
+            self.base = None
+            self.offset = None
+        except Exception as e:
+            print(e)
 
     def invoke(self, arg, from_tty):
+        if self.tunnel and not self.tunnel.is_up():
+            self.tunnel = None
+
         if not self.tunnel:
             if arg == "":
                 arg = HOST
 
             self.tunnel = Tunnel(arg)
             if not self.tunnel.is_up():
-                print "[sync] sync failed"
+                print("[sync] sync failed")
                 return
 
             id = self.identity()
             self.tunnel.send("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\"}\n" % id)
-            print "[sync] sync is now enabled with host %s" % arg
+            print("[sync] sync is now enabled with host %s" % str(arg))
+            self.tunnel.send("[sync]{\"type\":\"dialect\",\"dialect\":\"gdb\"}\n")
+            self.create_poll_timer()
         else:
-            print '(update)'
+            print('(update)')
 
         self.locate()
+        self.poller.enable()
 
 
 class Syncoff(gdb.Command):
@@ -301,7 +401,7 @@ class Syncoff(gdb.Command):
 
     def invoke(self, arg, from_tty):
         self.sync.reset_state()
-        print "[sync] sync is now disabled"
+        print("[sync] sync is now disabled")
 
 
 class Cmt(gdb.Command):
@@ -312,14 +412,15 @@ class Cmt(gdb.Command):
 
     def invoke(self, arg, from_tty):
         if not self.sync.base:
-            print "[sync] process is not running, command is dropped"
+            print("[sync] process not synced, command is dropped")
             return
 
         if arg == "":
-            print "[sync] usage: cmt [-a 0xBADF00D] <cmt to add>"
+            print("[sync] usage: cmt [-a 0xBADF00D] <cmt to add>")
             return
 
-        self.sync.tunnel.send("[sync]{\"type\":\"cmt\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" % (arg, self.sync.base, self.sync.offset))
+        self.sync.tunnel.send("[sync]{\"type\":\"cmt\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" %
+            (arg, self.sync.base, self.sync.offset))
 
 
 class Fcmt(gdb.Command):
@@ -330,10 +431,11 @@ class Fcmt(gdb.Command):
 
     def invoke(self, arg, from_tty):
         if not self.sync.base:
-            print "[sync] process is not running, command is dropped"
+            print("[sync] process not synced, command is dropped")
             return
 
-        self.sync.tunnel.send("[sync]{\"type\":\"fcmt\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" % (arg, self.sync.base, self.sync.offset))
+        self.sync.tunnel.send("[sync]{\"type\":\"fcmt\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" %
+            (arg, self.sync.base, self.sync.offset))
 
 
 class Rcmt(gdb.Command):
@@ -344,10 +446,38 @@ class Rcmt(gdb.Command):
 
     def invoke(self, arg, from_tty):
         if not self.sync.base:
-            print "[sync] process is not running, command is dropped"
+            print("[sync] process not synced, command is dropped")
             return
 
-        self.sync.tunnel.send("[sync]{\"type\":\"rcmt\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" % (arg, self.sync.base, self.sync.offset))
+        self.sync.tunnel.send("[sync]{\"type\":\"rcmt\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" %
+            (arg, self.sync.base, self.sync.offset))
+
+
+class Translate(gdb.Command):
+
+    def __init__(self, sync):
+        gdb.Command.__init__(self, "translate", gdb.COMMAND_OBSCURE, gdb.COMPLETE_NONE)
+        self.sync = sync
+
+    def invoke(self, arg, from_tty):
+        if not self.sync.base:
+            print("[sync] process not synced, command is dropped")
+            return
+
+        base, address, module = [a.strip() for a in arg.split(" ")]
+        maps = get_maps()
+        if not maps:
+            print("[sync] failed to get maps")
+            return None
+
+        mod = get_mod_by_name(maps, module)
+        if not mod:
+            print("[sync] failed to locate module %s" % module)
+            return None
+
+        mod_base, mod_sym = mod
+        rebased = int(address, 16) - int(base, 16) + mod_base
+        print("[sync] module %s based at 0x%x, rebased address: 0x%x\n" % (mod_sym, mod_base, rebased))
 
 
 class Bc(gdb.Command):
@@ -358,17 +488,18 @@ class Bc(gdb.Command):
 
     def invoke(self, arg, from_tty):
         if not self.sync.base:
-            print "[sync] process is not running, command is dropped"
+            print("[sync] process not synced, command is dropped")
             return
 
         if arg == "":
             arg = "oneshot"
 
         if not (arg in ["on", "off", "oneshot"]):
-            print "[sync] usage: bc <|on|off>"
+            print("[sync] usage: bc <|on|off>")
             return
 
-        self.sync.tunnel.send("[sync]{\"type\":\"bc\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" % (arg, self.sync.base, self.sync.offset))
+        self.sync.tunnel.send("[sync]{\"type\":\"bc\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" %
+            (arg, self.sync.base, self.sync.offset))
 
 
 class Cmd(gdb.Command):
@@ -379,16 +510,15 @@ class Cmd(gdb.Command):
 
     def invoke(self, arg, from_tty):
         if not self.sync.base:
-            print "[sync] process is not running, command is dropped"
+            print("[sync] process not synced, command is dropped")
             return
 
         if arg == "":
-            print "[sync] usage: cmd <command to execute and dump>"
-
-        cmd_output = gdb_execute(arg)
-        b64_output = base64.b64encode(cmd_output)
+            print("[sync] usage: cmd <command to execute and dump>")
+        cmd_output = gdb_execute(arg).encode('ascii')
+        b64_output = base64.b64encode(cmd_output).decode()
         self.sync.tunnel.send("[sync] {\"type\":\"cmd\",\"msg\":\"%s\", \"base\":%d,\"offset\":%d}\n" % (b64_output, self.sync.base, self.sync.offset))
-        print "[sync] command output:\n%s" % cmd_output.strip()
+        print("[sync] command output:\n%s" % cmd_output.strip())
 
 
 class Help(gdb.Command):
@@ -397,7 +527,7 @@ class Help(gdb.Command):
         gdb.Command.__init__(self, "synchelp", gdb.COMMAND_OBSCURE, gdb.COMPLETE_NONE)
 
     def invoke(self, arg, from_tty):
-        print (
+        print(
 """[sync] extension commands help:
  > sync <host>                   = synchronize with <host> or the default value
  > syncoff                       = stop synchronization
@@ -406,7 +536,9 @@ class Help(gdb.Command):
  > fcmt [-a address] <string>    = add a function comment for 'f = get_func(eip)' (or [addr]) in IDA
  > cmd <string>                  = execute command <string> and add its output as comment at current eip in IDA
  > bc <on|off|>                  = enable/disable path coloring in IDA
-                                    color a single instruction at current eip if called without argument\n""")
+                                   color a single instruction at current eip if called without argument
+ > translate <base> <addr> <mod> = rebase an address with respect to local module's base\n\n""")
+
 
 if __name__ == "__main__":
 
@@ -415,11 +547,11 @@ if __name__ == "__main__":
 
     for confpath in locations:
         if os.path.exists(confpath):
-            config = ConfigParser.SafeConfigParser({'host': HOST, 'port': PORT})
+            config = configparser.SafeConfigParser({'host': HOST, 'port': PORT})
             config.read(confpath)
             HOST = config.get("INTERFACE", 'host')
             PORT = config.getint("INTERFACE", 'port')
-            print "[sync] configuration file loaded %s:%s" % (HOST, PORT)
+            print("[sync] configuration file loaded %s:%s" % (HOST, PORT))
             break
 
     sync = Sync()
@@ -428,5 +560,6 @@ if __name__ == "__main__":
     Rcmt(sync)
     Fcmt(sync)
     Bc(sync)
+    Translate(sync)
     Cmd(sync)
     Help()
