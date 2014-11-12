@@ -97,6 +97,11 @@ COL_CBTRACE = COL_GREEN
 NETNODE_STORE = "$ SYNC_STORE"
 NETNODE_INDEX = 0xFFC0DEFF
 
+DBG_DIALECTS = {
+    'windbg': {'prefix': '!', 'si': 't', 'so': 'p', 'go': 'g', 'bp': 'bp ', 'hbp': 'ba e 1 ', 'bp1': 'bp /1 ', 'hbp1': 'ba e 1 /1 '},
+    'gdb': {'prefix': '', 'si': 'si', 'so': 'ni', 'go': 'continue', 'bp': 'b *', 'hbp': 'hb *',  'bp1': 'tb *', 'hbp1': 'thb *'},
+}
+
 # --------------------------------------------------------------------------
 
 
@@ -231,8 +236,8 @@ class RequestHandler(object):
 
     # log command output request at addr
     def req_cmd(self, hash):
-        msg, offset, base = hash['msg'], hash['offset'], hash['base']
-        msg = base64.b64decode(msg)
+        msg_b64, offset, base = hash['msg'], hash['offset'], hash['base']
+        msg = base64.b64decode(msg_b64)
         ea = self.rebase(base, offset)
         if not ea:
             return
@@ -356,7 +361,11 @@ class RequestHandler(object):
         if not ea:
             return
 
-        idaapi.set_name(ea, str(msg), False)
+        flags = False
+        if str(msg).startswith('@@'):
+            flags = idaapi.SN_LOCAL
+
+        idaapi.set_name(ea, str(msg), flags)
         print ("[*] label added at 0x%x" % ea)
 
     # color request at addr
@@ -456,6 +465,17 @@ class RequestHandler(object):
         self.notice_broker("cmd", "\"cmd\":\"%s\"" % res)
         return
 
+    # specify debugger dialect used to send commands
+    def req_set_dbg_dialect(self, hash):
+        global SyncForm
+        dialect = hash['dialect']
+        if dialect in DBG_DIALECTS:
+            self.dbg_dialect = DBG_DIALECTS[dialect]
+            SyncForm.init_hotkeys()
+        else:
+            print "[sync] unknown debugger dialect, disabling hotkeys"
+            SyncForm.uninit_hotkeys()
+
     # request from broker
     def req_broker(self, hash):
         subtype = hash['subtype']
@@ -520,7 +540,7 @@ class RequestHandler(object):
             return
 
         req_handler = self.req_handlers[type]
-        if type == 'broker':
+        if type in ['broker', 'dialect']:
             req_handler(hash)
         else:
             if self.is_active:
@@ -549,7 +569,7 @@ class RequestHandler(object):
 
         ea = idaapi.get_screen_ea()
         offset = self.rebase_remote(ea)
-        cmd = "bp %s 0x%x" % ("/1" if oneshot else "", offset)
+        cmd = "%s0x%x" % (self.dbg_dialect['bp1' if oneshot else 'bp'], offset)
 
         self.notice_broker("cmd", "\"cmd\":\"%s\"" % cmd)
         print "[sync] >> set %s" % cmd
@@ -562,7 +582,7 @@ class RequestHandler(object):
 
         ea = idaapi.get_screen_ea()
         offset = self.rebase_remote(ea)
-        cmd = "ba e 1 %s 0x%x" % ("/1" if oneshot else "", offset)
+        cmd = "%s0x%x" % (self.dbg_dialect['hbp1' if oneshot else 'hbp'], offset)
 
         self.notice_broker("cmd", "\"cmd\":\"%s\"" % cmd)
         print "[sync] >> set %s" % cmd
@@ -577,9 +597,14 @@ class RequestHandler(object):
 
     # send a translate command (Alt-F2) to the debugger (via the broker and dispatcher)
     def translate_notice(self):
+        if not self.dbg_dialect:
+            print "[sync] idb isn't synced yet, can't translate"
+            return
+
         ea = idaapi.get_screen_ea()
         mod = self.name.split('.')[0].strip()
-        cmd = "!translate 0x%x 0x%x %s" % (self.base, ea, mod)
+        cmd = self.dbg_dialect['prefix'] + "translate 0x%x 0x%x %s" % (self.base, ea, mod)
+
         self.notice_broker("cmd", "\"cmd\":\"%s\"" % cmd)
         print "[sync] translate address 0x%x" % ea
 
@@ -589,7 +614,7 @@ class RequestHandler(object):
             print "[sync] idb isn't enabled, can't go"
             return
 
-        self.notice_broker("cmd", "\"cmd\":\"g\"")
+        self.notice_broker("cmd", "\"cmd\":\"%s\"" % self.dbg_dialect['go'])
         self.notice_anti_flood()
 
     # send a single trace command (F11) to the debugger (via the broker and dispatcher)
@@ -598,7 +623,7 @@ class RequestHandler(object):
             print "[sync] idb isn't enabled, can't trace"
             return
 
-        self.notice_broker("cmd", "\"cmd\":\"t\"")
+        self.notice_broker("cmd", "\"cmd\":\"%s\"" % self.dbg_dialect['si'])
         self.notice_anti_flood()
 
     # send a single step command (F10) to the debugger (via the broker and dispatcher)
@@ -607,7 +632,7 @@ class RequestHandler(object):
             print "[sync] idb isn't enabled, can't single step"
             return
 
-        self.notice_broker("cmd", "\"cmd\":\"p\"")
+        self.notice_broker("cmd", "\"cmd\":\"%s\"" % self.dbg_dialect['so'])
         self.notice_anti_flood()
 
     # send a notice message to the broker process
@@ -648,6 +673,7 @@ class RequestHandler(object):
         self.parser = parser
         self.broker_sock = None
         self.is_active = False
+        self.dbg_dialect = None
         self.req_handlers = {
             'broker': self.req_broker,
             'loc': self.req_loc,
@@ -661,7 +687,8 @@ class RequestHandler(object):
             'bc': self.req_bc,
             'bps_get': self.req_bps_get,
             'bps_set': self.req_bps_set,
-            'modcheck': self.req_modcheck
+            'modcheck': self.req_modcheck,
+            'dialect': self.req_set_dbg_dialect
         }
 
 
@@ -937,14 +964,15 @@ class SyncForm_t(PluginForm):
         self.broker.worker.name = modname
 
     def init_hotkeys(self):
-        self.init_single_hotkey("F2", self.broker.worker.bp_notice)
-        self.init_single_hotkey("F3", self.broker.worker.bp_oneshot_notice)
-        self.init_single_hotkey("Ctrl-F2", self.broker.worker.hbp_notice)
-        self.init_single_hotkey("Ctrl-F3", self.broker.worker.hbp_oneshot_notice)
-        self.init_single_hotkey("Alt-F2", self.broker.worker.translate_notice)
-        self.init_single_hotkey("F5", self.broker.worker.go_notice)
-        self.init_single_hotkey("F10", self.broker.worker.so_notice)
-        self.init_single_hotkey("F11", self.broker.worker.si_notice)
+        if not self.hotkeys_ctx:
+            self.init_single_hotkey("F2", self.broker.worker.bp_notice)
+            self.init_single_hotkey("F3", self.broker.worker.bp_oneshot_notice)
+            self.init_single_hotkey("Ctrl-F2", self.broker.worker.hbp_notice)
+            self.init_single_hotkey("Ctrl-F3", self.broker.worker.hbp_oneshot_notice)
+            self.init_single_hotkey("Alt-F2", self.broker.worker.translate_notice)
+            self.init_single_hotkey("F5", self.broker.worker.go_notice)
+            self.init_single_hotkey("F10", self.broker.worker.so_notice)
+            self.init_single_hotkey("F11", self.broker.worker.si_notice)
 
     def init_single_hotkey(self, key, fnCb):
         ctx = idaapi.add_hotkey(key, fnCb)
@@ -961,6 +989,8 @@ class SyncForm_t(PluginForm):
         for ctx in self.hotkeys_ctx:
             if idaapi.del_hotkey(ctx):
                 del ctx
+
+        self.hotkeys_ctx = []
 
     def cb_btn_restart(self):
         print "[sync] restarting broker."
@@ -1042,7 +1072,6 @@ class SyncForm_t(PluginForm):
     def OnClose(self, form):
         print "[sync] form close"
         self.smooth_kill()
-
         global SyncForm
         del SyncForm
 

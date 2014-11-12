@@ -604,7 +604,7 @@ sync(PDEBUG_CLIENT4 Client, PCSTR Args)
     {
         dprintf("[sync] sync update\n");
         UpdateState();
-        goto exit;
+        goto Exit;
     }
 
     if (!Args || !*Args) {
@@ -617,7 +617,7 @@ sync(PDEBUG_CLIENT4 Client, PCSTR Args)
     if (FAILED(hRes=TunnelCreate(Host, g_DefaultPort)))
     {
         dprintf("[sync] sync failed\n");
-        goto exit;
+        goto Exit;
     }
 
     dprintf("[sync] probing sync\n");
@@ -625,22 +625,28 @@ sync(PDEBUG_CLIENT4 Client, PCSTR Args)
     if (FAILED(hRes=Identity(&pszId)))
     {
         dprintf("[sync] get identity failed\n");
-        goto exit;
+        goto Exit;
     }
 
     hRes=TunnelSend("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\"}\n", pszId);
-    if (SUCCEEDED(hRes))
-    {
-        dprintf("[sync] sync is now enabled with host %s\n", Host);
-        UpdateState();
-        CreatePollTimer();
-    }
-    else
+    if (FAILED(hRes))
     {
         dprintf("[sync] sync aborted\n");
+        goto Exit;
     }
 
-exit:
+    dprintf("[sync] sync is now enabled with host %s\n", Host);
+    UpdateState();
+    CreatePollTimer();
+
+    hRes = TunnelSend("[sync]{\"type\":\"dialect\",\"dialect\":\"windbg\"}\n");
+    if (FAILED(hRes))
+    {
+        dprintf("[sync] failed to send dialect\n");
+        goto Exit;
+    }
+
+Exit:
     if (!(pszId==NULL)){
         free(pszId);
     }
@@ -734,13 +740,13 @@ cmd(PDEBUG_CLIENT4 Client, PCSTR Args)
     if (FAILED(hRes=g_ExtClient->GetOutputCallbacks(&Callbacks)))
     {
         dprintf("[sync] GetOutputCallbacks failed\n");
-        goto exit;
+        goto Exit;
     }
 
     if (FAILED(hRes=g_ExtClient->SetOutputCallbacks(&g_OutputCb)))
     {
         dprintf("[sync] SetOutputCallbacks failed\n");
-        goto exit;
+        goto Exit;
     }
 
     // msdn: Execute method executes the specified debugger commands.
@@ -759,7 +765,7 @@ cmd(PDEBUG_CLIENT4 Client, PCSTR Args)
     dprintf("[sync] OutputCallbacks removed\n");
     #endif
 
-exit:
+Exit:
     return hRes;
 }
 
