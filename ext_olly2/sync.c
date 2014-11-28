@@ -337,7 +337,7 @@ HRESULT sync(PSTR Args)
     }
     */
 
-    hRes=TunnelSend("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\"}\n", "Ollydbg2_sync");
+    hRes=TunnelSend("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\",\"dialect\":\"ollydbg2\"}\n", "Ollydbg2_sync");
     if(SUCCEEDED(hRes))
     {
         dbgout("[sync] sync is now enabled with host %s\n", Host);

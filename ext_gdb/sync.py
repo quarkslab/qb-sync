@@ -382,9 +382,8 @@ class Sync(gdb.Command):
                 return
 
             id = self.identity()
-            self.tunnel.send("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\"}\n" % id)
+            self.tunnel.send("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\",\"dialect\":\"gdb\"}\n" % id)
             print("[sync] sync is now enabled with host %s" % str(arg))
-            self.tunnel.send("[sync]{\"type\":\"dialect\",\"dialect\":\"gdb\"}\n")
             self.create_poll_timer()
         else:
             print('(update)')

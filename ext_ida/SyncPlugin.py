@@ -595,6 +595,34 @@ class RequestHandler(object):
     def hbp_oneshot_notice(self):
         self.hbp_notice(True)
 
+    # export IDB's breakpoint (Ctrl-F1) to the debugger (via the broker and dispatcher)
+    def export_bp_notice(self):
+        if not self.dbg_dialect:
+            print "[sync] idb isn't synced yet, can't export bp"
+            return
+
+        mod = self.name.split('.')[0].strip()
+        nbp = idc.GetBptQty()
+
+        for i in range(nbp):
+            ea = idc.GetBptEA(i)
+            attrs = [idc.BPTATTR_TYPE, idc.BPTATTR_COND, idc.BPTATTR_FLAGS]
+            btype, cond, flags = [idc.GetBptAttr(ea, x) for x in attrs]
+
+            if cond:
+                print "bp %d: conditional bp not supported" % i
+            else:
+                if ((btype in [idc.BPT_EXEC, idc.BPT_SOFT]) and
+                    ((flags & idc.BPT_ENABLED) != 0)):
+
+                    offset = ea - self.base
+                    bp = self.dbg_dialect['hbp' if (btype == idc.BPT_EXEC) else 'bp']
+                    cmd = "%s%s+0x%x" % (bp, mod, offset)
+                    self.notice_broker("cmd", "\"cmd\":\"%s\"" % cmd)
+                    print "bp %d: %s" % (i, cmd)
+
+        print "[sync] export done"
+
     # send a translate command (Alt-F2) to the debugger (via the broker and dispatcher)
     def translate_notice(self):
         if not self.dbg_dialect:
@@ -969,6 +997,7 @@ class SyncForm_t(PluginForm):
             self.init_single_hotkey("F3", self.broker.worker.bp_oneshot_notice)
             self.init_single_hotkey("Ctrl-F2", self.broker.worker.hbp_notice)
             self.init_single_hotkey("Ctrl-F3", self.broker.worker.hbp_oneshot_notice)
+            self.init_single_hotkey("Ctrl-F1", self.broker.worker.export_bp_notice)
             self.init_single_hotkey("Alt-F2", self.broker.worker.translate_notice)
             self.init_single_hotkey("F5", self.broker.worker.go_notice)
             self.init_single_hotkey("F10", self.broker.worker.so_notice)

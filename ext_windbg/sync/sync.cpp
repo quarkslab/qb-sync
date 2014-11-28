@@ -628,7 +628,7 @@ sync(PDEBUG_CLIENT4 Client, PCSTR Args)
         goto Exit;
     }
 
-    hRes=TunnelSend("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\"}\n", pszId);
+    hRes=TunnelSend("[notice]{\"type\":\"new_dbg\",\"msg\":\"dbg connect - %s\",\"dialect\":\"windbg\"}\n", pszId);
     if (FAILED(hRes))
     {
         dprintf("[sync] sync aborted\n");
@@ -638,13 +638,6 @@ sync(PDEBUG_CLIENT4 Client, PCSTR Args)
     dprintf("[sync] sync is now enabled with host %s\n", Host);
     UpdateState();
     CreatePollTimer();
-
-    hRes = TunnelSend("[sync]{\"type\":\"dialect\",\"dialect\":\"windbg\"}\n");
-    if (FAILED(hRes))
-    {
-        dprintf("[sync] failed to send dialect\n");
-        goto Exit;
-    }
 
 Exit:
     if (!(pszId==NULL)){
