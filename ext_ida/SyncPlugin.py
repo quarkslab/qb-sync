@@ -100,6 +100,7 @@ NETNODE_INDEX = 0xFFC0DEFF
 DBG_DIALECTS = {
     'windbg': {'prefix': '!', 'si': 't', 'so': 'p', 'go': 'g', 'bp': 'bp ', 'hbp': 'ba e 1 ', 'bp1': 'bp /1 ', 'hbp1': 'ba e 1 /1 '},
     'gdb': {'prefix': '', 'si': 'si', 'so': 'ni', 'go': 'continue', 'bp': 'b *', 'hbp': 'hb *',  'bp1': 'tb *', 'hbp1': 'thb *'},
+    'ollydbg2': {'prefix': '', 'si': 'si', 'so': 'so', 'go': 'go', 'bp': 'bp ', 'hbp': 'xxx ', 'bp1': 'xxx ', 'hbp1': 'xxx '},
 }
 
 # --------------------------------------------------------------------------
@@ -471,9 +472,9 @@ class RequestHandler(object):
         dialect = hash['dialect']
         if dialect in DBG_DIALECTS:
             self.dbg_dialect = DBG_DIALECTS[dialect]
+            print "[sync] set debugger dialect to %s, enabling hotkeys" % dialect
             SyncForm.init_hotkeys()
         else:
-            print "[sync] unknown debugger dialect, disabling hotkeys"
             SyncForm.uninit_hotkeys()
 
     # request from broker

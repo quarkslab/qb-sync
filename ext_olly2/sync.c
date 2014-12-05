@@ -112,6 +112,156 @@ failed:
 }
 
 
+// send a combination of WM_KEYDOWN, WM_KEYUP for a given virtual-key code
+void MonkeyInput(WORD wVk)
+{
+    unsigned int scanCode, lParam;
+    BOOL bRes;
+
+    #if VERBOSE >= 2
+    dbgout("[*] MonkeyInput 0x%x, hwnd 0x%x\n", wVk, hwollymain);
+    #endif
+
+    scanCode = MapVirtualKey((unsigned int)wVk, MAPVK_VK_TO_VSC);
+    if (scanCode == 0) {
+        dbgout("[sync] failed to MapVirtualKey (no translation)\n");
+        goto Exit;
+    }
+
+    lParam = 0x00000001 | (scanCode << 16);
+
+    bRes = PostMessage(hwollymain, WM_KEYDOWN, wVk, lParam);
+    if (!bRes) {
+        dbgout("[sync] failed to PostMessage (WM_KEYDOWN)\n");
+        goto Exit;
+    }
+
+    bRes = PostMessage(hwollymain, WM_KEYUP, wVk, lParam);
+    if (!bRes) {
+        dbgout("[sync] failed to PostMessage (WM_KEYUP)\n");
+    }
+
+Exit:
+    return;
+}
+
+
+HRESULT
+SetBreakpoint(char *command, BOOL oneshot)
+{
+    HRESULT hRes=S_OK;
+    int res;
+    t_result result;
+    wchar_t *address = NULL;
+    unsigned long type;
+
+    #if VERBOSE >= 2
+    dbgout("[sync] SetBreakpoint: %s\n", command);
+    #endif
+
+    Suspendallthreads();
+
+    hRes = convert_tow(command, &address);
+    if(FAILED(hRes)){
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    res = Expression(&result, address, NULL, 0, 0, 0, 0, 0, EMOD_CHKEXTRA);
+    if (result.datatype == EXPR_INVALID)
+    {
+        dbgout("[sync] SetBreakpoint: failed to evaluate Expression (0x%x)\n", res);
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    type = BP_BREAK | (oneshot ? BP_ONESHOT : BP_MANUAL);
+
+    res = Setint3breakpoint(result.u, type, 0, 0, 0, BA_PERMANENT, L"", L"", L"");
+    if (res != 0)
+    {
+        dbgout("[sync] failed to Setint3breakpoint\n");
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    Flushmemorycache();
+
+Exit:
+    Resumeallthreads();
+
+    if (address != NULL){
+        free(address);
+    }
+
+    return hRes;
+}
+
+
+HRESULT
+SetHardwareBreakpoint(char *command, BOOL oneshot)
+{
+    HRESULT hRes=S_OK;
+    int res, index;
+    t_result result;
+    wchar_t *address = NULL;
+    unsigned long type;
+
+    #if VERBOSE >= 2
+    dbgout("[sync] SetHardwareBreakpoint: %s\n", command);
+    #endif
+
+    Suspendallthreads();
+
+    hRes = convert_tow(command, &address);
+    if(FAILED(hRes)){
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    res = Expression(&result, address, NULL, 0, 0, 0, 0, 0, EMOD_CHKEXTRA);
+    if (result.datatype == EXPR_INVALID)
+    {
+        dbgout("[sync] SetHardwareBreakpoint: failed to evaluate Expression (0x%x)\n", res);
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    type = BP_BREAK | BP_EXEC | BP_MANUAL;
+
+    index = Findfreehardbreakslot(type);
+    if (index == -1)
+    {
+        dbgout("[sync] failed to Findfreehardbreakslot\n");
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    #if VERBOSE >= 2
+    dbgout("[sync] Findfreehardbreakslot 0x%x\n", index);
+    #endif
+
+    res = Sethardbreakpoint(index, 1, result.u, type, 0, 0, 0, BA_PERMANENT, L"", L"", L"");
+    if (res != 0)
+    {
+        dbgout("[sync] failed to Sethardbreakpoint\n");
+        hRes = E_FAIL;
+        goto Exit;
+    }
+
+    Flushmemorycache();
+
+Exit:
+    Resumeallthreads();
+
+    if (address != NULL){
+        free(address);
+    }
+
+    return hRes;
+}
+
+
 // Poll socket for incoming commands
 HRESULT
 PollCmd()
@@ -133,7 +283,24 @@ PollCmd()
             if( next != NULL)
                 *next = 0;
 
-             dbgout("[sync] received command- %s (not implemented yet)\n", msg);
+            // bp1, hbp, hbp1 disabled for now, thread safety issue ?
+            // possibly need for a gdb.post_event like feature
+
+            if (strncmp(msg, "si", 2) == 0) {
+                MonkeyInput(VK_F7);
+            }
+            else if (strncmp(msg, "so", 2) == 0) {
+                MonkeyInput(VK_F8);
+            }
+            else if (strncmp(msg, "go", 2) == 0) {
+                MonkeyInput(VK_F9);
+            }
+            else if (strncmp(msg, "bp", 2) == 0) {
+                SetBreakpoint(msg+2, FALSE);
+            }
+            else {
+                dbgout("[sync] received command: %s (not yet implemented)\n", msg);
+            }
 
             // No more command
             if( next == NULL)
@@ -205,6 +372,41 @@ void CreatePollTimer()
                                  NULL, TIMER_PERIOD, TIMER_PERIOD, WT_EXECUTEINTIMERTHREAD);
     if (!(bRes))
         dbgout("[sync] failed to CreatePollTimer\n");
+}
+
+
+HRESULT
+convert_tow(const char * mbstr,  PTCH *wcstr)
+{
+    HRESULT hRes = S_OK;
+    size_t returnValue;
+    errno_t err;
+
+    err = _mbstowcs_s_l(&returnValue, NULL, 0, mbstr, _TRUNCATE, CP_ACP);
+    if (err != 0)
+    {
+        dbgout("[sync] _mbstowcs_s_l failed: %d\n", GetLastError());
+        return E_FAIL;
+    }
+
+    *wcstr = (wchar_t *) malloc(returnValue+1);
+    if (mbstr == NULL)
+    {
+        dbgout("[sync] convert failed to allocate buffer: %d\n", GetLastError());
+        return E_FAIL;
+    }
+
+    err = _mbstowcs_s_l(&returnValue, *wcstr, returnValue, mbstr, _TRUNCATE, CP_ACP);
+    if (err != 0)
+    {
+        dbgout("[sync] _mbstowcs_s_l failed: %d\n", GetLastError());
+        if(!(*wcstr == NULL))
+            free(*wcstr);
+
+        return E_FAIL;
+    }
+
+    return hRes;
 }
 
 
@@ -348,6 +550,8 @@ HRESULT sync(PSTR Args)
     else
         dbgout("[sync] sync aborted\n");
 
+
+
 exit:
     if(!(pszId==NULL))
         free(pszId);
@@ -397,7 +601,7 @@ static int Mabout(t_table *pt, wchar_t *name, ulong index, int mode)
         Resumeallthreads();
         n=StrcopyW(s,TEXTLEN,L"qb-sync plugin ");
         n+=StrcopyW(s+n,TEXTLEN-n,VERSION);
-        n+=StrcopyW(s+n,TEXTLEN-n,L"\nCopyright (C) 2012-2013 Quarkslab");
+        n+=StrcopyW(s+n,TEXTLEN-n,L"\nCopyright (C) 2012-2014 Quarkslab");
         Suspendallthreads();
 
         MessageBox(hwollymain,s, L"Sync plugin", MB_OK|MB_ICONINFORMATION);

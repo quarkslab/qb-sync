@@ -40,3 +40,5 @@ HRESULT ToBase64(const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszString);
 HRESULT FromBase64(LPSTR pszString, BYTE **ppbBinary);
 
 HRESULT WsaErrMsg(int LastError);
+
+HRESULT convert_tow(const char * mbstr,  PTCH *wcstr);
