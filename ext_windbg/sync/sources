@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012-2014, Quarkslab.
+# Copyright (C) 2012-2015, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -49,6 +49,8 @@ TARGETLIBS= \
         $(DBGSDK_LIB_PATH)\dbgeng.lib
         
 UMTYPE=windows
+MSC_OPTIMIZATION=/Ox
+LINKER_FLAGS=$(LINKER_FLAGS) /OPT:REF 
 
 SOURCES= sync.cpp   \
          tunnel.cpp     \

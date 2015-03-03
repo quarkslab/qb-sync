@@ -63,6 +63,10 @@ included in Python standard libraries for release >= 2.7.
 
 Build it
 --------
+The easy way: use provided Visual Studio 2013 solution,
+(see http://www.visualstudio.com/en-us/news/vs2013-community-vs.aspx)
+
+I did it my way:
 
 0. >cd Y:\sync\ext_windbg\sync
 1. edit make.rb
@@ -103,7 +107,7 @@ Build it
 3. Output is in sub-directories like objfre_win7_x86
 4. Copy appropriate sync.dll to "<WinDbg install path>\winext\"
 
-Note, if you're using a Win8 DDK you may have to use Nmake2MsBuild.
+Note, if you're using a Win8 or 8.1 DDK you may have to use Nmake2MsBuild.
 See: http://msdn.microsoft.com/en-us/library/windows/hardware/hh454827(v=vs.85).aspx
 
     > Y:\<install path>\Windows Kits\8.0\bin\x86\nmake2msbuild.exe" sources
