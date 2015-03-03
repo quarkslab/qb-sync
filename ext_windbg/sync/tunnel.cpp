@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2012-2014, Quarkslab.
+Copyright (C) 2012-2015, Quarkslab.
 
 This file is part of qb-sync.
 
@@ -63,11 +63,12 @@ trimcrlf(LPSTR pszSrcString)
 HRESULT
 FromBase64(LPCSTR pszString, BYTE **ppbBinary)
 {
-    HRESULT hRes=S_OK;
-    DWORD cbBinary;
+	BOOL bRes = FALSE;
+    HRESULT hRes = S_OK;
+    DWORD cbBinary = 0;
 
-    hRes = CryptStringToBinary(pszString, 0, CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
-    if (FAILED(hRes)){
+	bRes = CryptStringToBinary(pszString, 0, CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
+	if (!bRes){
         dprintf("[sync] failed at CryptStringToBinaryA: %d\n", GetLastError());
         return E_FAIL;
     }
@@ -79,8 +80,8 @@ FromBase64(LPCSTR pszString, BYTE **ppbBinary)
         return E_FAIL;
     }
 
-    hRes = CryptStringToBinaryA(pszString, 0, CRYPT_STRING_BASE64, *ppbBinary, &cbBinary, NULL, NULL);
-    if (FAILED(hRes)){
+	bRes = CryptStringToBinaryA(pszString, 0, CRYPT_STRING_BASE64, *ppbBinary, &cbBinary, NULL, NULL);
+	if (!bRes){
         dprintf("[sync] failed at CryptStringToBinaryA: %d\n", GetLastError());
         return E_FAIL;
     }
@@ -94,11 +95,12 @@ FromBase64(LPCSTR pszString, BYTE **ppbBinary)
 HRESULT
 ToStringEnc(DWORD dwFlags, const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszString)
 {
+	BOOL bRes = FALSE;
     HRESULT hRes=S_OK;
-    DWORD cchString;
+    DWORD cchString = 0;
 
-    hRes = CryptBinaryToStringA(pbBinary, cbBinary, dwFlags, NULL, &cchString);
-    if (FAILED(hRes)){
+	bRes = CryptBinaryToStringA(pbBinary, cbBinary, dwFlags, NULL, &cchString);
+	if (!bRes){
         dprintf("[sync] send failed at CryptBinaryToString: %d\n", GetLastError());
         return E_FAIL;
     }
@@ -110,8 +112,8 @@ ToStringEnc(DWORD dwFlags, const BYTE *pbBinary, DWORD cbBinary, LPSTR *pszStrin
         return E_FAIL;
     }
 
-    hRes = CryptBinaryToStringA(pbBinary, cbBinary, dwFlags, *pszString, &cchString);
-    if (FAILED(hRes)){
+	bRes = CryptBinaryToStringA(pbBinary, cbBinary, dwFlags, *pszString, &cchString);
+	if (!bRes){
         dprintf("[sync] failed at CryptBinaryToString: %d\n", GetLastError());
         if (*pszString)
         {
