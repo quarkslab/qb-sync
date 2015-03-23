@@ -493,6 +493,7 @@ DebugExtensionInitialize(PULONG Version, PULONG Flags)
     DebugClient->Release();
     g_ExtClient = NULL;
     g_Synchronized = FALSE;
+    g_hPollTimer = INVALID_HANDLE_VALUE;
 
     g_hPollCompleteEvent = CreateEvent(NULL, true, false, NULL);
     if (g_hPollCompleteEvent == NULL)
@@ -1914,6 +1915,7 @@ translate(PDEBUG_CLIENT4 Client, PCSTR Args)
     HRESULT hRes;
     ULONG64 Base, BaseRemote, Offset;
     ULONG RemainderIndex;
+    ULONG Type;
     DEBUG_VALUE DebugValue = {};
     INIT_API();
 
@@ -1964,6 +1966,17 @@ translate(PDEBUG_CLIENT4 Client, PCSTR Args)
     }
 
     Offset = Offset - BaseRemote + Base;
+
+    // properly mask addresses to display if target is x86
+    hRes = g_ExtControl->GetActualProcessorType(&Type);
+    if (SUCCEEDED(hRes))
+    {
+        if (Type == IMAGE_FILE_MACHINE_I386)
+        {
+            Offset &= 0xFFFFFFFF;
+            Base &= 0xFFFFFFFF;
+        }
+    }
 
     hRes = g_ExtControl->ControlledOutput(
         DEBUG_OUTCTL_AMBIENT_DML,
