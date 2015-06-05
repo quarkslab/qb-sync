@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012-2014, Quarkslab.
+# Copyright (C) 2012-2015, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -20,14 +20,16 @@
 qb-sync plugin
 --------------
 
-Synchronize a WinDbg/GDB/LLDB/OllyDbg2 debug session with IDA disassembler's view.
-Save data (comment, command output) from debugger to disassembler (IDB).
+Synchronize a WinDbg/GDB/LLDB/OllyDbg2/x64dbg debug session with IDA
+disassembler's view. Save data (comment, command output) from debugger
+to disassembler (IDB).
 
 Content:
 - ext_windbg/sync: WinDbg extension source files, once built: sync.dll
 - ext_gdb/sync.py: GDB plugin
 - ext_lldb/sync.py: LLDB plugin
 - ext_olly/: OllyDbg v2 plugin
+- ext_x64dbg: x64dbg plugin
 
 - ext_ida/SyncPlugin.py: IDA plugin, receive async events from broker
 - ext_ida/broker.py:
@@ -42,6 +44,7 @@ Content:
 
 
 
+
 Prerequisites
 -------------
 
@@ -52,9 +55,10 @@ http://www.hex-rays.com/products/ida/support/download.shtml
 For installation note see:
 http://www.hexblog.com/?p=333
 
-Note: since IDA 6.6, PySide is shipped by default with IDA.
+Important: since IDA 6.6, PySide is shipped by default with IDA.
 
-Windows DDK (including Debugging Tools) is required to build the WinDbg's extension.
+A development environment (preferably Visual Studio 2013) is required
+to build the WinDbg's extension (see "Build it" section).
 
 Python and Ruby are required by various scripts. argparse is
 included in Python standard libraries for release >= 2.7.
@@ -63,8 +67,9 @@ included in Python standard libraries for release >= 2.7.
 
 Build it
 --------
-The easy way: use provided Visual Studio 2013 solution,
-(see http://www.visualstudio.com/en-us/news/vs2013-community-vs.aspx)
+
+The easy way: use the Visual Studio 2013 solution provided in ext_windbg,
+(see http://www.visualstudio.com/en-us/news/vs2013-community-vs.aspx if needed).
 
 I did it my way:
 
@@ -107,35 +112,8 @@ I did it my way:
 3. Output is in sub-directories like objfre_win7_x86
 4. Copy appropriate sync.dll to "<WinDbg install path>\winext\"
 
-Note, if you're using a Win8 or 8.1 DDK you may have to use Nmake2MsBuild.
-See: http://msdn.microsoft.com/en-us/library/windows/hardware/hh454827(v=vs.85).aspx
+   Ex: Y:\Program Files (x86)\Windows Kits\8.1\Debuggers\x64\winext
 
-    > Y:\<install path>\Windows Kits\8.0\bin\x86\nmake2msbuild.exe" sources
-    From VS2012 command prompt (ex: x86)
-    > msbuild /t:clean /t:build .\sync.vcxproj
-
-The above command line defaults to Win8 Debug configuration for Win32 (x86) plateform
-
-You can pick other configurations and platforms :
-
-    From VS2012 command prompt
-    > msbuild /t:clean /t:build /p:Configuration="Win8 Release" /p:Platform="Win32"
-
-Available Configurations:
-
-    - Win8.1 Release
-    - Win8.1 Debug
-    - Win8 Debug
-    - Win8 Release
-    - Win7 Debug
-    - Win7 Release
-    - Vista Debug
-    - Vista Release
-
-Available Platforms:
-
-    - Win32
-    - x64
 
 
 Use it
@@ -185,7 +163,7 @@ Use it
 3. Launch WinDbg on target
 
 4. Load extension
-    0:000> !load sync
+    0:000> .load sync
     [sync.dll] DebugExtensionInitialize, ExtensionApis loaded
 
 5. Sync Windbg
@@ -391,7 +369,7 @@ Extra commands
     as well as data addresses (dc).
 
 !translate <base> <addr> <mod>
-    => Meant to be used from IDA (Alt-F2 shortcut), rebase an address based on its module's name and offset.
+    => Meant to be used from IDA (Alt-F2 shortcut), rebase an address with respect to its module's name and offset.
 
 
 Address optional argument
@@ -519,6 +497,24 @@ Due to the beta status of Olly2 API, only the following features have been imple
     - Label     [use CTRL+:]
 
 
+x64dbg
+-------
+
+Based on testplugin,  https://github.com/x64dbg/testplugin.
+
+x64dbg support is experimental, however:
+
+0. Build the plugin using the VS solution
+
+   Please note that plugin sdk is not redistributed with the solution.
+   A copy can be found in each release of x64dbg.
+
+   Paste the "pluginsdk" directory into "ext_x64dbg\x64dbg_sync"
+
+1. Copy the dll (extension is .d32 or .dp64) within x64dbg's plugin directory.
+
+2. Use commands to enable ("!sync") or disable ("!syncoff") synchronization.
+
 
 TODO
 -----
@@ -529,8 +525,8 @@ TODO
 KNOWN BUGS/LIMITATIONS
 -----------------------
 
-- Tested with Python 2.7, IDA 6.4/6.5/6.6 (Windows, Linux and Mac OS X), WinDDK 7600.16385.1,
-  GNU gdb (GDB) 7.4.1 (Debian), lldb 310.2.37
+- Tested with Python 2.7, IDA 6.4 to 6.7 (Windows, Linux and Mac OS X), WinDDK 7600.16385.1,
+  GNU gdb (GDB) 7.4.1 (Debian), lldb 310.2.37.
 - Warning: THERE IS NO AUTHENTICATION/ENCRYPTION or whatsoever between the parties;
   you're on your own.
 - With GDB, it seems that stop event is not called when using 'return' command.
@@ -541,7 +537,7 @@ KNOWN BUGS/LIMITATIONS
   best solution is still to sync off.
 - Graph window redrawing is quite slow for big graph.
 - Self modifying code is out of scope.
-- With IDA, qb-sync shortcuts conflicts in Linux environment.
+- With IDA, qb-sync shortcuts conflicts in Linux environments.
 
 
 LICENSE
