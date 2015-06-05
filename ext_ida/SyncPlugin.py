@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012-2014, Quarkslab.
+# Copyright (C) 2012-2015, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -101,6 +101,7 @@ DBG_DIALECTS = {
     'windbg': {'prefix': '!', 'si': 't', 'so': 'p', 'go': 'g', 'bp': 'bp ', 'hbp': 'ba e 1 ', 'bp1': 'bp /1 ', 'hbp1': 'ba e 1 /1 '},
     'gdb': {'prefix': '', 'si': 'si', 'so': 'ni', 'go': 'continue', 'bp': 'b *', 'hbp': 'hb *',  'bp1': 'tb *', 'hbp1': 'thb *'},
     'ollydbg2': {'prefix': '', 'si': 'si', 'so': 'so', 'go': 'go', 'bp': 'bp ', 'hbp': 'xxx ', 'bp1': 'xxx ', 'hbp1': 'xxx '},
+    'x64_dbg': {'prefix': '', 'si': 'sti', 'so': 'sto', 'go': 'go', 'bp': 'bp ', 'hbp': 'bph ', 'bp1': 'xxx ', 'hbp1': 'xxx '},
 }
 
 # --------------------------------------------------------------------------
