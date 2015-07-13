@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2012-2015, Quarkslab.
+# Copyright (C) 2012-2014, Quarkslab.
 #
 # This file is part of qb-sync.
 #
@@ -91,6 +91,7 @@ class DispatcherSrv():
             'module': self.req_module,
             'sync_mode': self.req_sync_mode,
             'cmd': self.req_cmd,
+            'bc': self.req_bc,
             'kill': self.req_kill
         }
 
@@ -223,7 +224,7 @@ class DispatcherSrv():
         for idbc in self.idb_clients:
             self.announcement(msg, idbc.client_sock)
 
-    # send message to currently active idb client
+    # send dbg message to currently active idb client
     def forward(self, msg, s=None):
         if not s:
             if not self.current_idb:
@@ -232,6 +233,11 @@ class DispatcherSrv():
 
         if s:
             s.sendall(msg + "\n")
+
+    # send dbg message to all idb clients
+    def forward_all(self, msg, s=None):
+        for idbc in self.idb_clients:
+            self.forward(msg, idbc.client_sock)
 
     # disable current idb and enable new idb matched from current module name
     def switch_idb(self, new_idb):
@@ -399,6 +405,11 @@ class DispatcherSrv():
         mode = hash['auto']
         self.broadcast("sync mode auto set to %s" % mode)
         self.sync_mode_auto = (mode == "on")
+
+    # bc request should be forwarded to all idbs
+    def req_bc(self, s, hash):
+        msg = "[sync]%s" % json.dumps(hash)
+        self.forward_all(msg)
 
     def req_cmd(self, s, hash):
         cmd = hash['cmd']

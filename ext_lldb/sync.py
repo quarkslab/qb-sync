@@ -330,7 +330,7 @@ def bc(debugger, command, result, session):
     pinfo = sc.procinfo()
     if not pinfo:
         return
-    sc.cmd(CMD_SYNC, "bc", msg=arg, base=pinfo["base"], offset=pinfo["offset"])
+    sc.cmd(CMD_NOTICE, "bc", msg=arg, base=pinfo["base"], offset=pinfo["offset"])
 
 
 def addcmt(typ, debugger, command, result, session):

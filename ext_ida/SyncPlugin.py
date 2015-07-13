@@ -374,9 +374,13 @@ class RequestHandler(object):
     def req_bc(self, hash):
         global COL_CBTRACE
         msg, offset, base = hash['msg'], hash['offset'], hash['base']
-        ea = self.rebase(base, offset)
-        if not ea:
-            return
+
+        if self.is_active:
+            ea = self.rebase(base, offset)
+            if not ea:
+                return
+        else:
+            ea = self.base
 
         if (msg == 'oneshot'):
             print ("[*] color oneshot added at 0x%x" % ea)
@@ -542,13 +546,15 @@ class RequestHandler(object):
             return
 
         req_handler = self.req_handlers[type]
-        if type in ['broker', 'dialect']:
+
+        # few requests are handled even though idb is not enable
+        if type in ['broker', 'dialect', 'bc']:
             req_handler(hash)
         else:
             if self.is_active:
                 req_handler(hash)
             else:
-                # idb is not enabled, silently drop the request
+                # otherwise, silently drop the request if idb is not enabled
                 return
 
         idaapi.refresh_idaview_anyway()

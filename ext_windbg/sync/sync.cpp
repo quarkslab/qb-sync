@@ -966,7 +966,7 @@ bc(PDEBUG_CLIENT4 Client, PCSTR Args)
         return E_FAIL;
     }
 
-    hRes = TunnelSend("[sync]{\"type\":\"bc\",\"msg\":\"%s\",\"base\":%llu,\"offset\":%llu}\n", msg, g_Base, g_Offset);
+    hRes = TunnelSend("[notice]{\"type\":\"bc\",\"msg\":\"%s\",\"base\":%llu,\"offset\":%llu}\n", msg, g_Base, g_Offset);
     return hRes;
 }
 

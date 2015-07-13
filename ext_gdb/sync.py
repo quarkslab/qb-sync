@@ -497,7 +497,7 @@ class Bc(gdb.Command):
             print("[sync] usage: bc <|on|off>")
             return
 
-        self.sync.tunnel.send("[sync]{\"type\":\"bc\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" %
+        self.sync.tunnel.send("[notice]{\"type\":\"bc\",\"msg\":\"%s\",\"base\":%d,\"offset\":%d}\n" %
             (arg, self.sync.base, self.sync.offset))
 
 
